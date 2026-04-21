@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import pool from './config/db.js';
 import { connectRedis } from './config/redis.js';
-
+import reservationRoutes from './routes/reservation.js';
 dotenv.config();
 
 const app = express();
@@ -11,6 +11,8 @@ const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use('/api/reservations', reservationRoutes);
+
 
 app.get('/', (req, res) => {
   res.send('Hệ thống Đặt Vé High-Concurrency đang hoạt động!');
