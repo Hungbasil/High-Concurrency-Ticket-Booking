@@ -1,12 +1,11 @@
 import type { Request, Response } from 'express';
 import pool from '../config/db.js';
 import { AppError } from '../utils/app-error.js';
-
+import { generateSeatsInBackground } from '../services/seatService.js';
 export const createEvent = async (req: Request, res: Response): Promise<void> => {
   const { title, start_time } = req.body;
 
   try {
-
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
       throw new AppError('Title là bắt buộc và phải là chuỗi hợp lệ', 400, 'INVALID_TITLE');
     }
@@ -34,9 +33,13 @@ export const createEvent = async (req: Request, res: Response): Promise<void> =>
          RETURNING id, title, start_time, status, created_at`,
         [title.trim(), start_time, 'UPCOMING']
       );
+      
       await client.query('COMMIT');
-
+      
       const event = result.rows[0];
+      const newEventId = event.id; 
+
+      generateSeatsInBackground(newEventId);
 
       res.status(201).json({
         success: true,
@@ -47,10 +50,10 @@ export const createEvent = async (req: Request, res: Response): Promise<void> =>
           status: event.status,
           created_at: event.created_at
         },
-        message: 'Sự kiện được tạo thành công!'
+        message: 'Tạo sự kiện thành công! Hệ thống đang tự động xếp ghế.'
       });
+
     } catch (dbError) {
-      // Rollback nếu có lỗi
       await client.query('ROLLBACK');
       throw dbError;
     } finally {
@@ -60,22 +63,49 @@ export const createEvent = async (req: Request, res: Response): Promise<void> =>
     if (error instanceof AppError) {
       res.status(error.statusCode).json({
         success: false,
-        error: {
-          code: error.code,
-          message: error.message
-        }
+        error: { code: error.code, message: error.message }
       });
       return;
     }
 
     console.error(' Lỗi tạo sự kiện:', error);
-
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Lỗi máy chủ nội bộ khi tạo sự kiện'
+      error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ khi tạo sự kiện' }
+    });
+  }
+};
+
+
+export const getEventStats = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+        COUNT(*) FILTER (WHERE status = 'SOLD') as sold_count,
+        COUNT(*) FILTER (WHERE status = 'AVAILABLE') as available_count,
+        COALESCE(SUM(price) FILTER (WHERE status = 'SOLD'), 0) as total_revenue
+       FROM seats WHERE event_id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ success: false, message: 'Không tìm thấy sự kiện' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        eventId: id,
+        soldCount: parseInt(result.rows[0].sold_count),
+        availableCount: parseInt(result.rows[0].available_count),
+        totalRevenue: parseFloat(result.rows[0].total_revenue)
       }
     });
+  } catch (error) {
+    console.error('🔴 Lỗi lấy thống kê:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 };
