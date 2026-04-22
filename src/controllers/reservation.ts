@@ -2,6 +2,7 @@
 import type { Request, Response } from 'express';
 import redisClient from '../config/redis.js';
 import pool from '../config/db.js';
+import { io } from '../index.js';
 
 export const holdSeat = async (req: Request, res: Response): Promise<void> => {
   const { userId, eventId, seatCode } = req.body;
@@ -50,6 +51,13 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
 
       await client.query('COMMIT'); // Xác nhận toàn bộ thay đổi
       
+      // Broadcast sự kiện ghế thay đổi trạng thái
+      io.emit('seatStatusChanged', {
+        eventId,
+        seatCode,
+        status: 'HOLD'
+      });
+      
       res.status(200).json({
         message: 'Giữ ghế thành công! Bạn có 5 phút để thanh toán.',
         reservationId: reservationRes.rows[0].id,
@@ -95,11 +103,18 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
     await client.query(`UPDATE seats SET status = 'SOLD' WHERE id = $1`, [seatId]);
 
     await client.query('COMMIT');
+    
+    // Broadcast sự kiện ghế thay đổi trạng thái
+    io.emit('seatStatusChanged', {
+      eventId,
+      seatCode,
+      status: 'SOLD'
+    });
 
     const lockKey = `lock:event:${eventId}:seat:${seatCode}`;
     await redisClient.del(lockKey);
 
-    res.status(200).json({ message: ' Thanh toán thành công !.' });
+    res.status(200).json({ message: '✅ Thanh toán thành công!' });
 
   } catch (error) {
     await client.query('ROLLBACK'); 

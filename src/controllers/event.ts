@@ -109,3 +109,62 @@ export const getEventStats = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 };
+
+/**
+ * GET /api/events/:id/seats
+ * Lấy danh sách ghế của một sự kiện
+ *
+ * @param req - Request object với params { id: eventId }
+ * @param res - Response object
+ *
+ * @returns {Object} Danh sách ghế
+ *
+ * @example
+ * GET /api/events/550e8400-e29b-41d4-a716-446655440000/seats
+ *
+ * Response (200):
+ * {
+ *   "success": true,
+ *   "data": [
+ *     { "id": "...", "seat_code": "A1", "price": 100000, "status": "AVAILABLE" },
+ *     { "id": "...", "seat_code": "A2", "price": 100000, "status": "HOLD" }
+ *   ]
+ * }
+ */
+export const getEventSeats = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  try {
+    // Validate event ID
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_EVENT_ID', message: 'Event ID là bắt buộc' }
+      });
+      return;
+    }
+
+    // Truy vấn danh sách ghế
+    const result = await pool.query(
+      `SELECT id, seat_code, price, status
+       FROM seats
+       WHERE event_id = $1
+       ORDER BY seat_code ASC`,
+      [id]
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('🔴 Lỗi lấy danh sách ghế:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Lỗi máy chủ nội bộ khi lấy danh sách ghế'
+      }
+    });
+  }
+};
