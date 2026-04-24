@@ -116,20 +116,18 @@ export const useSeatSelection = (eventId: string) => {
   const { selectSeat, deselectSeat, getSelectedSeats } = useBookingStore();
   const holdSeatMutation = useHoldSeat();
 
-  const handleSelectSeat = async (seatCode: string, price: number, seatId: string) => {
+  const handleSelectSeat = async (_seatCode: string, _price: number, _seatId: string): Promise<void> => {
     const userId = 'temp-user'; // TODO: Get from auth store
 
     try {
       const response = await holdSeatMutation.mutateAsync({
         userId,
         eventId,
-        seatCode,
+        seatCode: _seatCode,
       });
 
       // Add to cart and selections
-      selectSeat(eventId, seatCode, response.reservationId, response.expiresAt);
-
-      return response;
+      selectSeat(eventId, _seatCode, response.reservationId, response.expiresAt);
     } catch (error) {
       console.error('Failed to hold seat:', error);
       throw error;

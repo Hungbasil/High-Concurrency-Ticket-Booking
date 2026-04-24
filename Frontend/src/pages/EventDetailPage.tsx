@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEvent, useEventSeats, useSeatSelection } from '../hooks/index.js';
 import { useBookingStore } from '../store/useBookingStore.js';
@@ -10,7 +10,6 @@ import { SeatMap, Button } from '../components/index.js';
 export const EventDetailPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   if (!eventId) {
     return (
@@ -26,7 +25,7 @@ export const EventDetailPage: React.FC = () => {
   const { data: seatsData, isLoading: seatsLoading } = useEventSeats(eventId);
   const { handleSelectSeat, handleDeselectSeat, selectedSeats, isHolding } =
     useSeatSelection(eventId);
-  const { cart, addToCart, removeFromCart } = useBookingStore();
+  const { cart, addToCart } = useBookingStore();
 
   const event = eventData?.data;
   const seats = seatsData?.data || [];
@@ -183,11 +182,11 @@ export const EventDetailPage: React.FC = () => {
               {/* Checkout Button */}
               <Button
                 onClick={handleCheckout}
-                disabled={selectedSeats.length === 0 || isCheckingOut}
+                disabled={selectedSeats.length === 0}
                 size="lg"
                 className="w-full"
               >
-                {isCheckingOut ? 'Đang xử lý...' : 'Tiến hành thanh toán'}
+                Tiến hành thanh toán
               </Button>
 
               {/* Info */}

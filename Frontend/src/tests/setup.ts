@@ -3,9 +3,13 @@
  * Configures testing environment and global utilities
  */
 
-import { expect, afterEach, vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+declare global {
+  var IntersectionObserver: typeof IntersectionObserver;
+}
 
 // Cleanup after each test
 afterEach(() => {
@@ -15,7 +19,7 @@ afterEach(() => {
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -38,7 +42,7 @@ vi.mock('socket.io-client', () => ({
 }));
 
 // Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
+(globalThis as any).IntersectionObserver = class IntersectionObserver {
   constructor() {}
   disconnect() {}
   observe() {}
@@ -47,6 +51,3 @@ global.IntersectionObserver = class IntersectionObserver {
   }
   unobserve() {}
 } as any;
-
-// Set default test timeout
-expect.setDefaultTimeout(5000);

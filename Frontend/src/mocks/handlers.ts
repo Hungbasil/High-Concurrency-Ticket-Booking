@@ -83,7 +83,7 @@ export const handlers = [
   }),
 
   // GET /api/events/:id
-  http.get(`${BASE_URL}/events/:id`, ({ params }) => {
+  http.get(`${BASE_URL}/events/:id`, ({ params }: { params: Record<string, string> }) => {
     const event = mockEvents.find((e) => e.id === params.id);
 
     if (!event) {
@@ -100,7 +100,7 @@ export const handlers = [
   }),
 
   // GET /api/events/:id/seats
-  http.get(`${BASE_URL}/events/:id/seats`, ({ params }) => {
+  http.get(`${BASE_URL}/events/:id/seats`, ({ params }: { params: Record<string, string> }) => {
     const seats = generateMockSeats(params.id as string);
 
     return HttpResponse.json<ApiResponse<Seat[]>>({
@@ -110,7 +110,7 @@ export const handlers = [
   }),
 
   // GET /api/events/:id/stats
-  http.get(`${BASE_URL}/events/:id/stats`, ({ params }) => {
+  http.get(`${BASE_URL}/events/:id/stats`, ({ params }: { params: Record<string, string> }) => {
     const seats = generateMockSeats(params.id as string);
     const soldCount = seats.filter((s) => s.status === 'SOLD').length;
     const availableCount = seats.filter((s) => s.status === 'AVAILABLE').length;
@@ -130,7 +130,7 @@ export const handlers = [
   }),
 
   // POST /api/reservations/hold
-  http.post(`${BASE_URL}/reservations/hold`, async ({ request }) => {
+  http.post(`${BASE_URL}/reservations/hold`, async ({ request }: { request: Request }) => {
     const body = (await request.json()) as any;
     const { userId, eventId, seatCode } = body;
 
@@ -168,7 +168,7 @@ export const handlers = [
   }),
 
   // POST /api/reservations/checkout
-  http.post(`${BASE_URL}/reservations/checkout`, async ({ request }) => {
+  http.post(`${BASE_URL}/reservations/checkout`, async ({ request }: { request: Request }) => {
     const body = (await request.json()) as any;
     const { userId, reservationId, eventId, seatCode } = body;
 
