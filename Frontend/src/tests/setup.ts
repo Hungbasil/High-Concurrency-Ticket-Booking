@@ -42,7 +42,7 @@ vi.mock('socket.io-client', () => ({
 }));
 
 // Mock IntersectionObserver
-(globalThis as any).IntersectionObserver = class IntersectionObserver {
+(globalThis as unknown as Record<string, typeof IntersectionObserver>).IntersectionObserver = class IntersectionObserver {
   constructor() {}
   disconnect() {}
   observe() {}
@@ -50,4 +50,4 @@ vi.mock('socket.io-client', () => ({
     return [];
   }
   unobserve() {}
-} as any;
+} as unknown as typeof IntersectionObserver;

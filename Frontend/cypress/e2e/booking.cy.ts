@@ -1,3 +1,4 @@
+/// <reference types="cypress" />
 /**
  * Example E2E Test
  * Full booking flow test with mocked payment

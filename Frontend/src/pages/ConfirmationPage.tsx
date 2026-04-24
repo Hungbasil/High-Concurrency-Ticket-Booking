@@ -1,5 +1,5 @@
-import React from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/index.js';
 
 interface LocationState {
@@ -11,12 +11,13 @@ interface LocationState {
  */
 export const ConfirmationPage: React.FC = () => {
   const navigate = useNavigate();
-  const { eventId } = useParams<{ eventId: string }>();
   const location = useLocation();
   const state = location.state as LocationState | undefined;
   const seats = state?.seats || [];
 
-  const confirmationNumber = `BK${Date.now().toString().slice(-8)}`;
+  const [confirmationNumber] = useState(() =>
+    `BK${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">

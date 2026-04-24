@@ -7,7 +7,6 @@ import type {
   HoldResponse,
   CheckoutRequest,
   ApiResponse,
-  PaginatedResponse,
 } from '../types/index.js';
 
 /**

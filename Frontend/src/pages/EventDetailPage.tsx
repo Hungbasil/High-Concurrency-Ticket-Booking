@@ -11,6 +11,13 @@ export const EventDetailPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
 
+  // Call all hooks unconditionally at the top
+  const { data: eventData, isLoading: eventLoading } = useEvent(eventId || null);
+  const { data: seatsData, isLoading: seatsLoading } = useEventSeats(eventId || null);
+  const { handleSelectSeat, handleDeselectSeat, selectedSeats, isHolding } =
+    useSeatSelection(eventId || '');
+  const { cart, addToCart } = useBookingStore();
+
   if (!eventId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -20,12 +27,6 @@ export const EventDetailPage: React.FC = () => {
       </div>
     );
   }
-
-  const { data: eventData, isLoading: eventLoading } = useEvent(eventId);
-  const { data: seatsData, isLoading: seatsLoading } = useEventSeats(eventId);
-  const { handleSelectSeat, handleDeselectSeat, selectedSeats, isHolding } =
-    useSeatSelection(eventId);
-  const { cart, addToCart } = useBookingStore();
 
   const event = eventData?.data;
   const seats = seatsData?.data || [];

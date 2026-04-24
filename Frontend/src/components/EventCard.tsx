@@ -15,11 +15,6 @@ interface EventCardProps {
  */
 export const EventCard: React.FC<EventCardProps> = ({ event, stats }) => {
   const eventDate = new Date(event.start_time);
-  const dateStr = eventDate.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
   const timeStr = eventDate.toLocaleTimeString('vi-VN', {
     hour: '2-digit',
     minute: '2-digit',

@@ -1,10 +1,11 @@
+/// <reference types="cypress" />
 // Cypress support file
 // Global configuration and custom commands
 
 beforeEach(() => {
   // Start MSW before each test
-  cy.window().then(win => {
-    expect(win.navigator.serviceWorker).toBeDefined();
+  cy.window().then((win) => {
+    expect(win.navigator.serviceWorker).to.exist;
   });
 });
 
@@ -25,13 +26,3 @@ Cypress.Commands.add('proceedToCheckout', () => {
   cy.get('button').contains('Tiến hành thanh toán').click();
   cy.url().should('include', '/checkout');
 });
-
-declare global {
-  namespace Cypress {
-    interface Chainable {
-      loginUser(email: string, password: string): Chainable<void>;
-      selectSeat(seatCode: string): Chainable<void>;
-      proceedToCheckout(): Chainable<void>;
-    }
-  }
-}

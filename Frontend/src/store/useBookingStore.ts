@@ -158,7 +158,8 @@ export const useBookingStore = create<BookingStore>((set, get) => ({
 
   clearSelection: (eventId: string) => {
     set((state) => {
-      const { [eventId]: _, ...rest } = state.selections;
+      const rest = { ...state.selections };
+      delete rest[eventId];
       return { selections: rest };
     });
   },

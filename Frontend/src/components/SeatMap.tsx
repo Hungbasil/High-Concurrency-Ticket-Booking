@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import type { Seat as SeatType, SeatUpdate } from '../types/index.js';
 import { useSeatUpdates } from '../hooks/useSocket.js';
 import { Seat } from './Seat.js';
@@ -27,6 +27,16 @@ export const SeatMap: React.FC<SeatMapProps> = ({
 }) => {
   const [localSeats, setLocalSeats] = useState<SeatType[]>(seats);
   const [holdCountdowns, setHoldCountdowns] = useState<{ [key: string]: number }>({});
+  const prevSeatsRef = useRef<SeatType[]>(seats);
+
+  // Initialize and sync seats from props, handle WebSocket updates
+  useEffect(() => {
+    // Only sync if seats array actually changed (not just props reference)
+    if (seats !== prevSeatsRef.current) {
+      prevSeatsRef.current = seats;
+      setLocalSeats(seats);
+    }
+  }, [seats]);
 
   // Handle real-time seat updates from WebSocket
   useSeatUpdates(eventId, (update: SeatUpdate) => {
@@ -38,11 +48,6 @@ export const SeatMap: React.FC<SeatMapProps> = ({
       )
     );
   });
-
-  // Update local seats when props change
-  useEffect(() => {
-    setLocalSeats(seats);
-  }, [seats]);
 
   // Handle hold expiration countdown
   useEffect(() => {
@@ -89,11 +94,12 @@ export const SeatMap: React.FC<SeatMapProps> = ({
     try {
       await onSelectSeat(seat.seat_code, seat.price, seat.id);
 
-      // Start countdown for this seat's hold
-      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+      // Start countdown for this seat's hold (5 minutes)
+      const countdown = 5 * 60; // 5 minutes in seconds
+      
       setHoldCountdowns((prev) => ({
         ...prev,
-        [seat.seat_code]: Math.floor((expiresAt - Date.now()) / 1000),
+        [seat.seat_code]: countdown,
       }));
     } catch (error) {
       console.error('Failed to select seat:', error);

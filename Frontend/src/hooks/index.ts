@@ -116,7 +116,7 @@ export const useSeatSelection = (eventId: string) => {
   const { selectSeat, deselectSeat, getSelectedSeats } = useBookingStore();
   const holdSeatMutation = useHoldSeat();
 
-  const handleSelectSeat = async (_seatCode: string, _price: number, _seatId: string): Promise<void> => {
+  const handleSelectSeat = async (_seatCode: string): Promise<void> => {
     const userId = 'temp-user'; // TODO: Get from auth store
 
     try {

@@ -1,6 +1,19 @@
 import { http, HttpResponse } from 'msw';
 import type { ApiResponse, Event, Seat, HoldResponse } from '../types/index.js';
 
+interface HoldRequestBody {
+  userId: string;
+  eventId: string;
+  seatCode: string;
+}
+
+interface CheckoutRequestBody {
+  userId: string;
+  reservationId: string;
+  eventId: string;
+  seatCode: string;
+}
+
 const BASE_URL = 'http://localhost:3000/api';
 
 // Mock data
@@ -131,7 +144,7 @@ export const handlers = [
 
   // POST /api/reservations/hold
   http.post(`${BASE_URL}/reservations/hold`, async ({ request }: { request: Request }) => {
-    const body = (await request.json()) as any;
+    const body = (await request.json()) as HoldRequestBody;
     const { userId, eventId, seatCode } = body;
 
     if (!userId || !eventId || !seatCode) {
@@ -169,7 +182,7 @@ export const handlers = [
 
   // POST /api/reservations/checkout
   http.post(`${BASE_URL}/reservations/checkout`, async ({ request }: { request: Request }) => {
-    const body = (await request.json()) as any;
+    const body = (await request.json()) as CheckoutRequestBody;
     const { userId, reservationId, eventId, seatCode } = body;
 
     if (!userId || !reservationId || !eventId || !seatCode) {

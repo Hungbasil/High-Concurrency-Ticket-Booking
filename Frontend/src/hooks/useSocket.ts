@@ -99,7 +99,7 @@ export const useSocketEmit = () => {
   const { socket } = useSocket();
 
   const emit = useCallback(
-    (event: string, data: any) => {
+    (event: string, data: Record<string, unknown>) => {
       if (socket?.connected) {
         socket.emit(event, data);
       }
