@@ -16,7 +16,7 @@ export const EventDetailPage: React.FC = () => {
   const { data: seatsData, isLoading: seatsLoading } = useEventSeats(eventId || null);
   const { handleSelectSeat, handleDeselectSeat, selectedSeats, isHolding } =
     useSeatSelection(eventId || '');
-  const { cart, addToCart } = useBookingStore();
+  const { cart, addToCart, selections } = useBookingStore();
 
   if (!eventId) {
     return (
@@ -67,21 +67,33 @@ export const EventDetailPage: React.FC = () => {
       return;
     }
 
-    // Add selected seats to cart
+    // Add selected seats to cart with holdId
+    const selection = selections[eventId];
+    const addedSeats: string[] = [];
+    
     selectedSeats.forEach((seatCode) => {
       const seat = seats.find((s) => s.seat_code === seatCode);
       if (seat) {
+        console.log(`Adding seat ${seatCode} to cart with price:`, seat.price);
+        // Include holdId if available, but still add to cart for offline support
+        const holdInfo = selection?.tempHolds[seatCode];
         addToCart({
           seatId: seat.id,
           seatCode: seat.seat_code,
           price: seat.price,
           eventId,
+          holdId: holdInfo?.holdId,
+          expiresAt: holdInfo?.expiresAt,
         });
+        addedSeats.push(seatCode);
       }
     });
 
-    // Navigate to checkout
-    navigate(`/checkout/${eventId}`);
+    if (addedSeats.length > 0) {
+      console.log('Navigating to checkout with', addedSeats.length, 'seats');
+      // Navigate to checkout
+      navigate(`/checkout/${eventId}`);
+    }
   };
 
   return (

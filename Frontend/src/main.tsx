@@ -2,13 +2,14 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 // Initialize MSW (Mock Service Worker) for local development
-if (import.meta.env.DEV) {
-  const { worker } = await import('./mocks/browser.js');
-  await worker.start({
-    onUnhandledRequest: 'bypass',
-  });
-  console.log('✅ Mock Service Worker started');
-}
+// Disabled to use real backend API - uncomment to use mock data
+// if (import.meta.env.DEV) {
+//   const { worker } = await import('./mocks/browser.js');
+//   await worker.start({
+//     onUnhandledRequest: 'bypass',
+//   });
+//   console.log('✅ Mock Service Worker started');
+// }
 
 import './index.css'
 import App from './App.tsx'

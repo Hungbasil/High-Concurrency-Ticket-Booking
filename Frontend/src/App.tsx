@@ -45,12 +45,6 @@ function App() {
                 >
                   Trang chủ
                 </a>
-                <a
-                  href="/bookings"
-                  className="text-gray-600 hover:text-gray-900 font-medium"
-                >
-                  Đơn hàng
-                </a>
               </nav>
             </div>
           </header>

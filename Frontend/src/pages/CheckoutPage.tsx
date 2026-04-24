@@ -23,6 +23,11 @@ export const CheckoutPage: React.FC = () => {
     cardCVV: '',
   });
 
+  // Debug: log cart items when they change
+  React.useEffect(() => {
+    console.log('Checkout cart:', cart);
+  }, [cart]);
+
   if (!eventId) {
     return <div>Event ID không hợp lệ</div>;
   }

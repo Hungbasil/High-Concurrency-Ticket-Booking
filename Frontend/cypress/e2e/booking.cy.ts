@@ -34,7 +34,7 @@ describe('Complete Booking Flow', () => {
     cy.get('input[name="email"]').type('john@example.com');
     cy.get('input[name="phone"]').type('0123456789');
     cy.get('input[name="cardName"]').type('John Doe');
-    cy.get('input[name="cardNumber"]').type('4111111111111111');
+    cy.get('input[name="cardNumber"]').type('411111111111');
     cy.get('input[name="cardExpiry"]').type('12/25');
     cy.get('input[name="cardCVV"]').type('123');
 
