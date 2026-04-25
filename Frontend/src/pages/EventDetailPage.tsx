@@ -164,32 +164,64 @@ export const EventDetailPage: React.FC = () => {
 
               {/* Pricing */}
               <div className="space-y-3 border-t pt-4 mb-6">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tổng cộng:</span>
-                  <span className="font-semibold">
-                    {cart.items
-                      .reduce((sum, item) => sum + item.price, 0)
-                      .toLocaleString()}đ
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Thuế (10%):</span>
-                  <span className="font-semibold">
-                    {cart.tax.toLocaleString()}đ
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Phí xử lý:</span>
-                  <span className="font-semibold">
-                    {cart.fees.toLocaleString()}đ
-                  </span>
-                </div>
-                <div className="flex justify-between text-lg font-bold border-t pt-3">
-                  <span>Tổng cộng:</span>
-                  <span className="text-blue-600">
-                    {cart.total.toLocaleString()}đ
-                  </span>
-                </div>
+                {selectedSeats.length > 0 && (
+                  <>
+                    {selectedSeats.map((seatCode) => {
+                      const seat = seats.find((s) => s.seat_code === seatCode);
+                      return (
+                        <div key={seatCode} className="flex justify-between text-sm">
+                          <span className="text-gray-600">Ghế {seatCode}:</span>
+                          <span className="font-semibold">
+                            {seat?.price?.toLocaleString()}đ
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="border-t pt-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Tổng cộng:</span>
+                        <span className="font-semibold">
+                          {selectedSeats
+                            .reduce((sum, seatCode) => {
+                              const seat = seats.find((s) => s.seat_code === seatCode);
+                              return sum + (seat?.price || 0);
+                            }, 0)
+                            .toLocaleString()}đ
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Thuế (10%):</span>
+                        <span className="font-semibold">
+                          {(
+                            selectedSeats.reduce((sum, seatCode) => {
+                              const seat = seats.find((s) => s.seat_code === seatCode);
+                              return sum + (seat?.price || 0);
+                            }, 0) * 0.1
+                          ).toLocaleString()}đ
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Phí xử lý:</span>
+                        <span className="font-semibold">
+                          {(selectedSeats.length * 5000).toLocaleString()}đ
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-lg font-bold border-t pt-3">
+                        <span>Tổng cộng:</span>
+                        <span className="text-blue-600">
+                          {(
+                            selectedSeats.reduce((sum, seatCode) => {
+                              const seat = seats.find((s) => s.seat_code === seatCode);
+                              return sum + (seat?.price || 0);
+                            }, 0) *
+                              1.1 +
+                            selectedSeats.length * 5000
+                          ).toLocaleString()}đ
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Checkout Button */}
