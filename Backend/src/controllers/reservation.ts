@@ -43,11 +43,14 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
       // Cập nhật trạng thái ghế thành HOLD (Đang giữ)
       await client.query('UPDATE seats SET status = $1 WHERE id = $2', ['HOLD', seatId]);
 
+      // Convert temp-user to NULL for database, or use userId if it's a valid UUID
+      const finalUserId = userId === 'temp-user' || !userId || userId === 'null' ? null : userId;
+
       const reservationRes = await client.query(`
         INSERT INTO reservations (user_id, seat_id, status, expires_at)
         VALUES ($1, $2, 'PENDING', NOW() + INTERVAL '5 minutes')
         RETURNING id, expires_at
-      `, [userId, seatId]);
+      `, [finalUserId, seatId]);
 
       await client.query('COMMIT'); // Xác nhận toàn bộ thay đổi
       
@@ -86,10 +89,13 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
   try {
     await client.query('BEGIN');
 
+    // Convert temp-user to NULL for database, or use userId if it's a valid UUID
+    const finalUserId = userId === 'temp-user' || !userId || userId === 'null' ? null : userId;
+
     const resCheck = await client.query(`
       SELECT seat_id FROM reservations 
-      WHERE id = $1 AND user_id = $2 AND status = 'PENDING' AND expires_at > NOW()
-    `, [reservationId, userId]);
+      WHERE id = $1 AND (user_id = $2 OR (user_id IS NULL AND $2 IS NULL)) AND status = 'PENDING' AND expires_at > NOW()
+    `, [reservationId, finalUserId]);
 
     if (resCheck.rows.length === 0) {
       await client.query('ROLLBACK');
