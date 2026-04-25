@@ -6,6 +6,7 @@ import { useBookingStore } from './store/useBookingStore.js';
 import {
   HomePage,
   LoginPage,
+  BookingsPage,
   EventDetailPage,
   CheckoutPage,
   ConfirmationPage,
