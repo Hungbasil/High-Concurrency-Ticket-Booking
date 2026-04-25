@@ -28,6 +28,22 @@ export const CheckoutPage: React.FC = () => {
     console.log('Checkout cart:', cart);
   }, [cart]);
 
+  // Auto-fill user information from logged-in user
+  React.useEffect(() => {
+    if (currentUser) {
+      const nameParts = currentUser.name?.split(' ') || ['', ''];
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      setFormData((prev) => ({
+        ...prev,
+        firstName: firstName || prev.firstName,
+        lastName: lastName || prev.lastName,
+        email: currentUser.email || prev.email,
+      }));
+    }
+  }, [currentUser]);
+
   if (!eventId) {
     return <div>Event ID không hợp lệ</div>;
   }
@@ -94,9 +110,14 @@ export const CheckoutPage: React.FC = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Customer Info */}
               <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">
+                <h2 className="text-xl font-bold text-gray-900 mb-2">
                   Thông tin khách hàng
                 </h2>
+                {currentUser && (
+                  <p className="text-sm text-green-600 mb-4">
+                    ✅ Thông tin được tự động điền từ tài khoản của bạn
+                  </p>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <input
@@ -122,7 +143,10 @@ export const CheckoutPage: React.FC = () => {
                     placeholder="Email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="col-span-2 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    readOnly={!!currentUser}
+                    className={`col-span-2 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      currentUser ? 'bg-gray-100 cursor-not-allowed' : ''
+                    }`}
                     required
                   />
                   <input

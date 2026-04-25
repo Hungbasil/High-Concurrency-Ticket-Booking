@@ -16,7 +16,7 @@ export const EventDetailPage: React.FC = () => {
   const { data: seatsData, isLoading: seatsLoading } = useEventSeats(eventId || null);
   const { handleSelectSeat, handleDeselectSeat, selectedSeats, isHolding } =
     useSeatSelection(eventId || '');
-  const { cart, addToCart, selections } = useBookingStore();
+  const { addToCart, selections } = useBookingStore();
 
   if (!eventId) {
     return (

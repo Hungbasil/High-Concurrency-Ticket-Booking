@@ -17,12 +17,14 @@ export const LoginPage: React.FC = () => {
 
   const loginMutation = useMutation({
     mutationFn: usersApi.login,
-    onSuccess: (data) => {
-      const { user, token } = data.data;
-      setCurrentUser(user);
-      setAuthToken(token);
-      showNotification('✅ Đăng nhập thành công!', 'success');
-      navigate('/events');
+    onSuccess: (data: any) => {
+      const { user, token } = data?.data || {};
+      if (user && token) {
+        setCurrentUser(user);
+        setAuthToken(token);
+        showNotification('✅ Đăng nhập thành công!', 'success');
+        navigate('/events');
+      }
     },
     onError: (error: any) => {
       const message =
@@ -35,12 +37,14 @@ export const LoginPage: React.FC = () => {
 
   const registerMutation = useMutation({
     mutationFn: usersApi.register,
-    onSuccess: (data) => {
-      const { user, token } = data.data;
-      setCurrentUser(user);
-      setAuthToken(token);
-      showNotification('✅ Đăng ký thành công!', 'success');
-      navigate('/events');
+    onSuccess: (data: any) => {
+      const { user, token } = data?.data || {};
+      if (user && token) {
+        setCurrentUser(user);
+        setAuthToken(token);
+        showNotification('✅ Đăng ký thành công!', 'success');
+        navigate('/events');
+      }
     },
     onError: (error: any) => {
       const message =
