@@ -7,6 +7,7 @@ import pool from './config/db.js';
 import { connectRedis } from './config/redis.js';
 import reservationRoutes from './routes/reservation.js';
 import eventsRoutes from './routes/events.js';
+import usersRoutes from './routes/users.js';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/events', eventsRoutes);
+app.use('/api/users', usersRoutes);
 
 // Lắng nghe kết nối Socket.IO
 io.on('connection', (socket: any) => {
