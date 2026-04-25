@@ -24,6 +24,9 @@ interface BookingStore {
   // User state
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
+  setAuthToken: (token: string | null) => void;
+  getAuthToken: () => string | null;
+  logout: () => void;
 
   // UI state
   isLoading: boolean;
@@ -168,6 +171,23 @@ export const useBookingStore = create<BookingStore>((set, get) => ({
   currentUser: null,
   setCurrentUser: (user: User | null) => {
     set({ currentUser: user });
+  },
+
+  setAuthToken: (token: string | null) => {
+    if (token) {
+      localStorage.setItem('authToken', token);
+    } else {
+      localStorage.removeItem('authToken');
+    }
+  },
+
+  getAuthToken: () => {
+    return localStorage.getItem('authToken');
+  },
+
+  logout: () => {
+    set({ currentUser: null });
+    localStorage.removeItem('authToken');
   },
 
   // UI

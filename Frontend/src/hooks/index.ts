@@ -113,11 +113,11 @@ export const useCheckout = () => {
  * Hook to manage seat selection with hold countdown
  */
 export const useSeatSelection = (eventId: string) => {
-  const { selectSeat, deselectSeat, getSelectedSeats } = useBookingStore();
+  const { selectSeat, deselectSeat, getSelectedSeats, currentUser } = useBookingStore();
   const holdSeatMutation = useHoldSeat();
 
   const handleSelectSeat = async (_seatCode: string): Promise<void> => {
-    const userId = 'temp-user'; // TODO: Get from auth store
+    const userId = currentUser?.id || 'temp-user';
 
     try {
       const response = await holdSeatMutation.mutateAsync({

@@ -152,6 +152,49 @@ export const reservationsApi = {
 };
 
 /**
+ * Users/Authentication API
+ */
+export const usersApi = {
+  /**
+   * POST /api/users/register
+   * Register a new user
+   * Body: { email, password, fullName }
+   * Returns: { user, token }
+   */
+  register: async (data: { email: string; password: string; fullName: string }) => {
+    const response = await apiClient.post<ApiResponse<{ user: any; token: string }>>(
+      '/users/register',
+      data
+    );
+    return response.data;
+  },
+
+  /**
+   * POST /api/users/login
+   * Login user
+   * Body: { email, password }
+   * Returns: { user, token }
+   */
+  login: async (data: { email: string; password: string }) => {
+    const response = await apiClient.post<ApiResponse<{ user: any; token: string }>>(
+      '/users/login',
+      data
+    );
+    return response.data;
+  },
+
+  /**
+   * GET /api/users/me
+   * Get current user profile (requires auth token)
+   * Returns: { user }
+   */
+  getCurrentUser: async () => {
+    const response = await apiClient.get<ApiResponse<any>>('/users/me');
+    return response.data;
+  },
+};
+
+/**
  * WebSocket URL for real-time seat updates
  * Usage: const socket = io(WS_URL, { transports: ['websocket'] });
  * 

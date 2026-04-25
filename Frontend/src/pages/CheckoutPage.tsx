@@ -10,7 +10,7 @@ import { Button } from '../components/index.js';
 export const CheckoutPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
-  const { cart, clearCart } = useBookingStore();
+  const { cart, clearCart, currentUser } = useBookingStore();
   const checkoutMutation = useCheckout();
   const [formData, setFormData] = useState({
     firstName: '',
@@ -66,7 +66,7 @@ export const CheckoutPage: React.FC = () => {
       // For each cart item, process checkout
       for (const item of cart.items) {
         await checkoutMutation.mutateAsync({
-          userId: 'temp-user',
+          userId: currentUser?.id || 'temp-user',
           reservationId: item.holdId || '',
           eventId,
           seatCode: item.seatCode,
