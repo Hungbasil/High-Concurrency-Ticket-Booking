@@ -130,3 +130,56 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
     client.release();
   }
 };
+
+/**
+ * GET /api/reservations/user/me
+ * Get all bookings for the current user
+ */
+export const getUserBookings = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Không được xác thực' },
+      });
+      return;
+    }
+
+    const client = await pool.connect();
+
+    try {
+      const bookingsRes = await client.query(
+        `SELECT 
+          r.id as reservation_id,
+          r.status,
+          r.created_at,
+          s.seat_code,
+          s.price,
+          e.id as event_id,
+          e.title,
+          e.start_time
+        FROM reservations r
+        JOIN seats s ON r.seat_id = s.id
+        JOIN events e ON s.event_id = e.id
+        WHERE r.user_id = $1 AND r.status = 'PAID'
+        ORDER BY r.created_at DESC`,
+        [userId]
+      );
+
+      res.status(200).json({
+        success: true,
+        data: bookingsRes.rows,
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('🔴 Lỗi lấy danh sách vé:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ' },
+    });
+  }
+};
