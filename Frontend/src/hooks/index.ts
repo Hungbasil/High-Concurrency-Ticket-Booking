@@ -13,9 +13,9 @@ export const useEventSeats = (eventId: string | null, enabled = true) => {
       return eventsApi.getEventSeats(eventId);
     },
     enabled: enabled && !!eventId,
-    staleTime: 5000, // 5 seconds
-    gcTime: 10000, // 10 seconds (formerly cacheTime)
-    retry: 2,
+    staleTime: 10000, // ✅ OPTIMIZED: 10 seconds (was 5s) to reduce refetches
+    gcTime: 15000, // ✅ OPTIMIZED: Keep in cache longer
+    retry: 1, // ✅ OPTIMIZED: Reduce retries
   });
 };
 
@@ -74,10 +74,22 @@ export const useHoldSeat = () => {
 
   return useMutation({
     mutationFn: reservationsApi.holdSeat,
+    retry: 1, // ✅ Reduce retries to avoid long wait times
     onSuccess: (data) => {
-      // Invalidate seats query to reflect the new hold
-      queryClient.invalidateQueries({ queryKey: ['seats'] });
-      showNotification('Ghế được giữ thành công! Bạn có 5 phút để thanh toán.', 'success');
+      // ✅ OPTIMIZED: Don't refetch all seats - let WebSocket handle updates
+      // Just update the local cache for the held seat
+      queryClient.setQueryData(['seats'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          data: oldData.data?.map((seat: any) =>
+            seat.seat_code === data.seatCode
+              ? { ...seat, status: 'HOLD' }
+              : seat
+          ),
+        };
+      });
+      showNotification('✅ Ghế được giữ thành công! Bạn có 5 phút để thanh toán.', 'success');
       return data;
     },
     onError: (error) => {
@@ -97,8 +109,12 @@ export const useCheckout = () => {
   return useMutation({
     mutationFn: reservationsApi.checkout,
     onSuccess: () => {
-      // Invalidate all related queries
-      queryClient.invalidateQueries({ queryKey: ['seats'] });
+      // ✅ OPTIMIZED: Update cache instead of refetching
+      queryClient.setQueryData(['seats'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return oldData; // Keep the existing data, WebSocket will notify others
+      });
+      // Invalidate stats only (small query)
       queryClient.invalidateQueries({ queryKey: ['eventStats'] });
       showNotification('✅ Thanh toán thành công!', 'success');
     },

@@ -21,7 +21,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 8000, // ✅ OPTIMIZED: Reduced from 10s to 8s for faster failure detection
   headers: {
     'Content-Type': 'application/json',
   },

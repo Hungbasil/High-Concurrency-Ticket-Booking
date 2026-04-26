@@ -126,7 +126,8 @@ export const EventDetailPage: React.FC = () => {
           {/* Seat Map */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Chọn ghế</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Chọn ghế</h2>
+              <p className="text-sm text-gray-600 mb-4">💡 Bấm vào ghế để chọn, bấm lại để bỏ chọn</p>
               <SeatMap
                 eventId={eventId}
                 seats={seats}
@@ -147,14 +148,21 @@ export const EventDetailPage: React.FC = () => {
               <div className="mb-6">
                 <p className="text-sm text-gray-600 mb-2">Ghế đã chọn:</p>
                 {selectedSeats.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 mb-4">
+                  <div className="space-y-2 mb-4">
                     {selectedSeats.map((seatCode) => (
-                      <span
+                      <div
                         key={seatCode}
-                        className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded"
+                        className="flex items-center justify-between px-3 py-2 bg-blue-100 text-blue-800 text-sm font-semibold rounded"
                       >
-                        {seatCode}
-                      </span>
+                        <span>{seatCode}</span>
+                        <button
+                          onClick={() => handleDeselectSeat(seatCode)}
+                          className="ml-2 text-blue-600 hover:text-blue-900 font-bold text-lg"
+                          title="Bấm để bỏ chọn ghế này"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
