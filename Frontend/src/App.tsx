@@ -49,6 +49,12 @@ function Header() {
           </a>
           {currentUser ? (
             <>
+              <a
+                href="/bookings"
+                className="text-gray-600 hover:text-gray-900 font-medium"
+              >
+                Vé của tôi
+              </a>
               <span className="text-gray-600 text-sm">
                 Xin chào, <span className="font-semibold">{currentUser.name}</span>
               </span>
@@ -93,6 +99,7 @@ function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
               <Route path="/events/:eventId" element={<EventDetailPage />} />
               <Route path="/checkout/:eventId" element={<CheckoutPage />} />
               <Route
