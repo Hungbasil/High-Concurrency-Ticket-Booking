@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "optimize-db": "tsx src/scripts/optimize-db.ts"
   },
   "keywords": [],
   "author": "",

@@ -25,23 +25,21 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
     try {
       await client.query('BEGIN');
 
-      // Kiểm tra lần cuối xem ghế có thật sự đang trống trong DB không
-      const seatRes = await client.query(
-        'SELECT id FROM seats WHERE event_id = $1 AND seat_code = $2 AND status = $3',
-        [eventId, seatCode, 'AVAILABLE']
-      );
+      // ✅ OPTIMIZED: Combine SELECT + UPDATE in one query using UPDATE...RETURNING
+      const updateRes = await client.query(`
+        UPDATE seats SET status = $1 
+        WHERE event_id = $2 AND seat_code = $3 AND status = $4
+        RETURNING id
+      `, ['HOLD', eventId, seatCode, 'AVAILABLE']);
 
-      if (seatRes.rows.length === 0) {
-         await redisClient.del(lockKey);
-         await client.query('ROLLBACK');
-         res.status(400).json({ message: 'Ghế không tồn tại hoặc đã bán!' });
-         return;
+      if (updateRes.rows.length === 0) {
+        await redisClient.del(lockKey);
+        await client.query('ROLLBACK');
+        res.status(400).json({ message: 'Ghế không tồn tại hoặc đã bán!' });
+        return;
       }
 
-      const seatId = seatRes.rows[0].id;
-
-      // Cập nhật trạng thái ghế thành HOLD (Đang giữ)
-      await client.query('UPDATE seats SET status = $1 WHERE id = $2', ['HOLD', seatId]);
+      const seatId = updateRes.rows[0].id;
 
       // Convert temp-user to NULL for database, or use userId if it's a valid UUID
       const finalUserId = userId === 'temp-user' || !userId || userId === 'null' ? null : userId;
@@ -54,11 +52,13 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
 
       await client.query('COMMIT'); // Xác nhận toàn bộ thay đổi
       
-      // Broadcast sự kiện ghế thay đổi trạng thái
-      io.emit('seatStatusChanged', {
-        eventId,
-        seatCode,
-        status: 'HOLD'
+      // ✅ OPTIMIZED: Emit event asynchronously (non-blocking)
+      setImmediate(() => {
+        io.emit('seatStatusChanged', {
+          eventId,
+          seatCode,
+          status: 'HOLD'
+        });
       });
       
       res.status(200).json({
@@ -92,6 +92,7 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
     // Convert temp-user to NULL for database, or use userId if it's a valid UUID
     const finalUserId = userId === 'temp-user' || !userId || userId === 'null' ? null : userId;
 
+    // ✅ OPTIMIZED: Get seat_id and check reservation in one query
     const resCheck = await client.query(`
       SELECT seat_id FROM reservations 
       WHERE id = $1 AND (user_id = $2 OR (user_id IS NULL AND $2 IS NULL)) AND status = 'PENDING' AND expires_at > NOW()
@@ -104,21 +105,25 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
     }
 
     const seatId = resCheck.rows[0].seat_id;
-    await client.query(`UPDATE reservations SET status = 'PAID' WHERE id = $1`, [reservationId]);
-
-    await client.query(`UPDATE seats SET status = 'SOLD' WHERE id = $1`, [seatId]);
+    
+    // ✅ OPTIMIZED: Execute both updates concurrently (in parallel within transaction)
+    await Promise.all([
+      client.query(`UPDATE reservations SET status = 'PAID' WHERE id = $1`, [reservationId]),
+      client.query(`UPDATE seats SET status = 'SOLD' WHERE id = $1`, [seatId])
+    ]);
 
     await client.query('COMMIT');
     
-    // Broadcast sự kiện ghế thay đổi trạng thái
-    io.emit('seatStatusChanged', {
-      eventId,
-      seatCode,
-      status: 'SOLD'
+    // ✅ OPTIMIZED: Emit event and clear lock asynchronously (non-blocking)
+    setImmediate(async () => {
+      io.emit('seatStatusChanged', {
+        eventId,
+        seatCode,
+        status: 'SOLD'
+      });
+      const lockKey = `lock:event:${eventId}:seat:${seatCode}`;
+      await redisClient.del(lockKey);
     });
-
-    const lockKey = `lock:event:${eventId}:seat:${seatCode}`;
-    await redisClient.del(lockKey);
 
     res.status(200).json({ message: '✅ Thanh toán thành công!' });
 
