@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { Notification } from './components/index.js';
 import { useBookingStore } from './store/useBookingStore.js';
+import { usersApi } from './api/client.js';
 import {
   HomePage,
   LoginPage,
@@ -22,6 +23,49 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * App Initializer - Restores user from saved auth token
+ */
+function AppInitializer({ children }: { children: React.ReactNode }) {
+  const { setCurrentUser, getAuthToken } = useBookingStore();
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    const restoreUser = async () => {
+      try {
+        const token = getAuthToken();
+        if (token) {
+          const response = await usersApi.getCurrentUser();
+          if (response.data) {
+            setCurrentUser(response.data);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to restore user:', error);
+        // If token is invalid, clear it
+        localStorage.removeItem('authToken');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    restoreUser();
+  }, [setCurrentUser, getAuthToken]);
+
+  // Show loading state while initializing
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin">
+          <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
 
 /**
  * Header Component with Auth
@@ -53,7 +97,7 @@ function Header() {
                 href="/bookings"
                 className="text-gray-600 hover:text-gray-900 font-medium"
               >
-                Vé của tôi
+                Lịch sử đặt vé
               </a>
               <span className="text-gray-600 text-sm">
                 Xin chào, <span className="font-semibold">{currentUser.name}</span>
@@ -90,37 +134,39 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-          {/* Header */}
-          <Header />
+        <AppInitializer>
+          <div className="min-h-screen bg-gray-50 flex flex-col">
+            {/* Header */}
+            <Header />
 
-          {/* Main Content */}
-          <main className="flex-1">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/events" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/bookings" element={<BookingsPage />} />
-              <Route path="/events/:eventId" element={<EventDetailPage />} />
-              <Route path="/checkout/:eventId" element={<CheckoutPage />} />
-              <Route
-                path="/confirmation/:eventId"
-                element={<ConfirmationPage />}
-              />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </main>
+            {/* Main Content */}
+            <main className="flex-1">
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/events" element={<HomePage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/bookings" element={<BookingsPage />} />
+                <Route path="/events/:eventId" element={<EventDetailPage />} />
+                <Route path="/checkout/:eventId" element={<CheckoutPage />} />
+                <Route
+                  path="/confirmation/:eventId"
+                  element={<ConfirmationPage />}
+                />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </main>
 
-          {/* Footer */}
-          <footer className="bg-white border-t border-gray-200 mt-12">
-            <div className="max-w-7xl mx-auto px-4 py-8 text-center text-gray-600">
-              <p>© 2026 High-Concurrency Ticket Booking.</p>
-            </div>
-          </footer>
+            {/* Footer */}
+            <footer className="bg-white border-t border-gray-200 mt-12">
+              <div className="max-w-7xl mx-auto px-4 py-8 text-center text-gray-600">
+                <p>© 2026 High-Concurrency Ticket Booking.</p>
+              </div>
+            </footer>
 
-          {/* Notification Container */}
-          <Notification />
-        </div>
+            {/* Notification Container */}
+            <Notification />
+          </div>
+        </AppInitializer>
       </Router>
     </QueryClientProvider>
   );
