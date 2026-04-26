@@ -98,6 +98,7 @@ function App() {
           <main className="flex-1">
             <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/events" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/bookings" element={<BookingsPage />} />
               <Route path="/events/:eventId" element={<EventDetailPage />} />

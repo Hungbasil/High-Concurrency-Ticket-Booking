@@ -152,7 +152,7 @@ export const BookingsPage: React.FC = () => {
         )}
 
         <div className="mt-8 text-center">
-          <Button onClick={() => navigate('/events')} variant="outline">
+          <Button onClick={() => navigate('/events')} variant="secondary">
             Quay lại mua vé
           </Button>
         </div>
