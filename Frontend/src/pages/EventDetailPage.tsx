@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEvent, useEventSeats, useSeatSelection } from '../hooks/index.js';
 import { useBookingStore } from '../store/useBookingStore.js';
-import { SeatMap, Button } from '../components/index.js';
+import { SeatMap, Button, AIAutoBookModal } from '../components/index.js';
 
 /**
  * Event Detail Page - Seat Selection
@@ -10,6 +10,7 @@ import { SeatMap, Button } from '../components/index.js';
 export const EventDetailPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const [isAIAutoBookOpen, setIsAIAutoBookOpen] = useState(false);
 
   // Call all hooks unconditionally at the top
   const { data: eventData, isLoading: eventLoading } = useEvent(eventId || null);
@@ -242,10 +243,31 @@ export const EventDetailPage: React.FC = () => {
                 Tiến hành thanh toán
               </Button>
 
+              {/* AI Auto-Book Button */}
+              <Button
+                onClick={() => setIsAIAutoBookOpen(true)}
+                variant="secondary"
+                size="lg"
+                className="w-full mt-3"
+              >
+                 Để AI Chọn & Đặt
+              </Button>
+
               {/* Info */}
               <p className="text-xs text-gray-500 mt-4">
                 ℹ️ Bạn sẽ hoàn thành thanh toán trong bước tiếp theo
               </p>
+
+              {/* AI Auto-Book Modal */}
+              <AIAutoBookModal
+                isOpen={isAIAutoBookOpen}
+                onClose={() => setIsAIAutoBookOpen(false)}
+                eventId={eventId || ''}
+                onSuccess={() => {
+                  // Refresh seats data
+                  setTimeout(() => window.location.reload(), 1000);
+                }}
+              />
             </div>
           </div>
         </div>
