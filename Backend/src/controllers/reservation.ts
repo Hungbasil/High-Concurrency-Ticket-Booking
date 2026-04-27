@@ -205,14 +205,19 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    console.log(` AI Auto-Book: ${prompt} (eventId: ${eventId})`);
+    console.log(`🤖 AI Auto-Select: ${prompt} (eventId: ${eventId})`);
+
+    // Extract số lượng ghế từ prompt (ví dụ: "3 vé", "2 ghế", etc)
+    const numberMatch = prompt.match(/\d+/);
+    const maxSeats = numberMatch ? Math.min(parseInt(numberMatch[0]), 5) : 3; // Tối đa 5 vé
+
+    console.log(`📊 AI sẽ chọn tối đa ${maxSeats} vé`);
 
     // Lấy danh sách ghế available
     const seatsRes = await pool.query(
       `SELECT id, seat_code, price, status FROM seats 
        WHERE event_id = $1 AND status = 'AVAILABLE'
-       ORDER BY seat_code ASC
-       LIMIT 20`,
+       ORDER BY seat_code ASC`,
       [eventId]
     );
 
@@ -226,12 +231,15 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Gọi Ollama AI để quyết định đặt bao nhiêu vé
+    // Gọi Ollama AI để chọn ghế (giới hạn số lượng)
     const aiPrompt = `Dựa trên yêu cầu: "${prompt}"
+    
+    QUAN TRỌNG: Chỉ chọn ĐÚNG ${maxSeats} ghế, không được nhiều hơn!
+    
     Danh sách ghế available: ${availableSeats.map(s => s.seat_code).join(', ')}
     
-    Hãy chọn một số ghế tốt nhất (ưu tiên ghế ở giữa như A5-A10, B5-B10). 
-    Trả lời chỉ danh sách mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,B5`;
+    Hãy chọn ${maxSeats} ghế tốt nhất (ưu tiên ghế ở giữa như A5-A10, B5-B10). 
+    Trả lời CHỈ danh sách ${maxSeats} mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,A7`;
 
     const aiResponse = await axios.post(OLLAMA_URL, {
       model: 'mistral',
@@ -241,12 +249,17 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
     });
 
     const selectedSeatsStr = aiResponse.data.message.content;
-    const selectedCodes = selectedSeatsStr.split(',').map((s: string) => s.trim().toUpperCase()).filter((s: string) => s.length > 0);
+    const selectedCodes = selectedSeatsStr
+      .split(',')
+      .map((s: string) => s.trim().toUpperCase())
+      .filter((s: string) => s.length > 0)
+      .slice(0, maxSeats); // Giới hạn chỉ maxSeats
 
-    console.log(`🤖 AI đã chọn ghế: ${selectedCodes.join(', ')}`);
+    console.log(`✅ AI đã chọn ghế: ${selectedCodes.join(', ')}`);
+
     const seatsToBook = availableSeats.filter(seat => 
       selectedCodes.includes(seat.seat_code)
-    ).slice(0, 5);
+    );
 
     if (seatsToBook.length === 0) {
       res.status(400).json({
@@ -256,8 +269,8 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Tự động hold + checkout các ghế
-    const bookedSeats = [];
+    // Chỉ HOLD ghế (không thanh toán)
+    const heldSeats = [];
     const client = await pool.connect();
 
     try {
@@ -270,7 +283,9 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
           const isLocked = await redisClient.set(lockKey, userId, { NX: true, EX: 300 });
 
           if (!isLocked) {
-            continue; // Skip if someone else grabbed it
+            console.log(`⚠️ Ghế ${seat.seat_code} đã bị khóa, bỏ qua`);
+            await client.query('ROLLBACK');
+            continue;
           }
 
           // Hold seat
@@ -284,12 +299,13 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
           if (updateRes.rows.length === 0) {
             await redisClient.del(lockKey);
             await client.query('ROLLBACK');
+            console.log(`⚠️ Ghế ${seat.seat_code} không tồn tại hoặc đã bán`);
             continue;
           }
 
           const seatId = updateRes.rows[0].id;
 
-          // Create reservation
+          // Create reservation với status PENDING (không PAID)
           const reservationRes = await client.query(
             `INSERT INTO reservations (user_id, seat_id, status, expires_at)
              VALUES ($1, $2, 'PENDING', NOW() + INTERVAL '5 minutes')
@@ -298,59 +314,47 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
           );
 
           const reservationId = reservationRes.rows[0].id;
+          const expiresAt = reservationRes.rows[0].expires_at;
 
-          // Immediately checkout
-          const seatCheckRes = await client.query(
-            `SELECT seat_id FROM reservations 
-             WHERE id = $1 AND user_id = $2 AND status = 'PENDING' AND expires_at > NOW()`,
-            [reservationId, userId]
-          );
+          heldSeats.push({
+            seatId: seat.id,
+            seatCode: seat.seat_code,
+            price: seat.price,
+            reservationId,
+            expiresAt
+          });
 
-          if (seatCheckRes.rows.length > 0) {
-            await Promise.all([
-              client.query(`UPDATE reservations SET status = 'PAID' WHERE id = $1`, [reservationId]),
-              client.query(`UPDATE seats SET status = 'SOLD' WHERE id = $1`, [seatId])
-            ]);
-
-            bookedSeats.push({
+          // Emit event cho Socket.IO
+          setImmediate(() => {
+            io.emit('seatStatusChanged', {
+              eventId,
               seatCode: seat.seat_code,
-              price: seat.price,
-              reservationId
+              status: 'HOLD'
             });
-
-            // Emit event
-            setImmediate(async () => {
-              io.emit('seatStatusChanged', {
-                eventId,
-                seatCode: seat.seat_code,
-                status: 'SOLD'
-              });
-              await redisClient.del(lockKey);
-            });
-          }
+          });
 
           await client.query('COMMIT');
         } catch (seatError) {
           await client.query('ROLLBACK');
-          console.error(` Lỗi đặt ghế ${seat.seat_code}:`, seatError);
+          console.error(`❌ Lỗi hold ghế ${seat.seat_code}:`, seatError);
         }
       }
 
-      if (bookedSeats.length > 0) {
-        const totalPrice = bookedSeats.reduce((sum, s) => sum + s.price, 0);
+      if (heldSeats.length > 0) {
+        const totalPrice = heldSeats.reduce((sum, s) => sum + s.price, 0);
         res.status(200).json({
           success: true,
           data: {
-            bookedSeats,
+            heldSeats,
             totalPrice,
-            aiMessage: `Đặt thành công ${bookedSeats.length} vé: ${bookedSeats.map(s => s.seatCode).join(', ')}`
+            aiMessage: `✅ AI đã chọn ${heldSeats.length} vé: ${heldSeats.map(s => s.seatCode).join(', ')}. Những vé này đã được giữ lại, hãy thêm vào giỏ hàng và thanh toán!`
           },
-          message: ` Đặt thành công ${bookedSeats.length} vé`
+          message: `✅ AI đã chọn thành công ${heldSeats.length} vé. Vui lòng kiểm tra giỏ hàng để thanh toán.`
         });
       } else {
         res.status(400).json({
           success: false,
-          error: { code: 'BOOKING_FAILED', message: 'Không thể đặt bất kỳ vé nào' }
+          error: { code: 'BOOKING_FAILED', message: 'Không thể hold bất kỳ vé nào' }
         });
       }
     } finally {
@@ -359,7 +363,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
 
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error(' Lỗi gọi Ollama:', error.message);
+      console.error('🔴 Lỗi gọi Ollama:', error.message);
       res.status(503).json({
         success: false,
         error: {
@@ -370,10 +374,10 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    console.error(' Lỗi Auto-Book:', error);
+    console.error('🔴 Lỗi Auto-Select:', error);
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ khi auto-book' }
+      error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ khi AI chọn ghế' }
     });
   }
 };
