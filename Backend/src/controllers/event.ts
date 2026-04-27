@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import pool from '../config/db.js';
 import { AppError } from '../utils/app-error.js';
 import { generateSeatsInBackground } from '../services/seatService.js';
+import axios from 'axios';
 export const createEvent = async (req: Request, res: Response): Promise<void> => {
   const { title, start_time } = req.body;
 
@@ -240,6 +241,123 @@ export const getEvent = async (req: Request, res: Response): Promise<void> => {
         code: 'INTERNAL_ERROR',
         message: 'Lỗi máy chủ nội bộ khi lấy thông tin sự kiện'
       }
+    });
+  }
+};
+
+/**
+ * POST /api/events/ai/generate
+ * Generate event using AI (Ollama)
+ * Gửi yêu cầu bằng tiếng Việt để AI tạo sự kiện tự động
+ */
+export const generateEventWithAI = async (req: Request, res: Response): Promise<void> => {
+  const { prompt } = req.body;
+  const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
+
+  try {
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      throw new AppError('Prompt là bắt buộc và phải là chuỗi hợp lệ', 400, 'INVALID_PROMPT');
+    }
+
+    // Call Ollama AI
+    console.log(`🤖 Gọi Ollama với prompt: ${prompt}`);
+    
+    const aiResponse = await axios.post(OLLAMA_URL, {
+      model: 'mistral',
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      stream: false,
+      timeout: 60000 // 60 seconds timeout
+    });
+
+    const assistantMessage = aiResponse.data.message.content;
+    console.log(`🤖 Ollama response: ${assistantMessage}`);
+
+    // Check if AI wants to create an event
+    if (assistantMessage.toLowerCase().includes('tạo') && assistantMessage.toLowerCase().includes('sự kiện')) {
+      const titleMatch = assistantMessage.match(/["']([^"']+)["']/);
+      const title = titleMatch ? titleMatch[1] : 'Sự kiện từ AI';
+
+      // Schedule for next Friday
+      const nextFriday = new Date();
+      nextFriday.setDate(nextFriday.getDate() + ((5 - nextFriday.getDay() + 7) % 7 || 7));
+      nextFriday.setHours(19, 0, 0, 0);
+
+      const startTime = nextFriday.toISOString();
+
+      // Create event in database
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+          `INSERT INTO events (title, start_time, status, created_at)
+           VALUES ($1, $2, $3, NOW())
+           RETURNING id, title, start_time, status, created_at`,
+          [title.trim(), startTime, 'UPCOMING']
+        );
+
+        await client.query('COMMIT');
+
+        const event = result.rows[0];
+        generateSeatsInBackground(event.id);
+
+        res.status(201).json({
+          success: true,
+          data: {
+            id: event.id,
+            title: event.title,
+            start_time: event.start_time,
+            status: event.status,
+            created_at: event.created_at,
+            aiMessage: assistantMessage
+          },
+          message: `✅ AI đã tạo sự kiện "${title}" thành công!`
+        });
+      } catch (dbError) {
+        await client.query('ROLLBACK');
+        throw dbError;
+      } finally {
+        client.release();
+      }
+    } else {
+      res.status(200).json({
+        success: true,
+        data: {
+          aiMessage: assistantMessage
+        },
+        message: '🤖 AI đã xử lý yêu cầu nhưng không tạo sự kiện mới'
+      });
+    }
+  } catch (error) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: { code: error.code, message: error.message }
+      });
+      return;
+    }
+
+    if (axios.isAxiosError(error)) {
+      console.error('🔴 Lỗi gọi Ollama:', error.message);
+      res.status(503).json({
+        success: false,
+        error: {
+          code: 'OLLAMA_ERROR',
+          message: 'Không thể kết nối tới Ollama. Vui lòng chắc chắn Ollama đang chạy (http://localhost:11434)'
+        }
+      });
+      return;
+    }
+
+    console.error('🔴 Lỗi tạo sự kiện với AI:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ khi tạo sự kiện với AI' }
     });
   }
 };
