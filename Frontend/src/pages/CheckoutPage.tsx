@@ -10,7 +10,7 @@ import { Button } from '../components/index.js';
 export const CheckoutPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
-  const { cart, clearCart, currentUser } = useBookingStore();
+  const { cart, clearCart, currentUser, showNotification } = useBookingStore();
   const checkoutMutation = useCheckout();
   const [formData, setFormData] = useState({
     firstName: '',
@@ -22,6 +22,14 @@ export const CheckoutPage: React.FC = () => {
     cardExpiry: '',
     cardCVV: '',
   });
+
+  // Check if user is logged in, redirect to login if not
+  React.useEffect(() => {
+    if (!currentUser) {
+      showNotification('Bạn cần đăng nhập để thanh toán', 'warning');
+      navigate('/login');
+    }
+  }, [currentUser, navigate, showNotification]);
 
   // Debug: log cart items when they change
   React.useEffect(() => {
