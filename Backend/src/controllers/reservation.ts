@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import redisClient from '../config/redis.js';
 import pool from '../config/db.js';
 import { io } from '../index.js';
+import axios from 'axios';
 
 export const holdSeat = async (req: Request, res: Response): Promise<void> => {
   const { userId, eventId, seatCode } = req.body;
@@ -24,8 +25,6 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-
-      // ✅ OPTIMIZED: Combine SELECT + UPDATE in one query using UPDATE...RETURNING
       const updateRes = await client.query(`
         UPDATE seats SET status = $1 
         WHERE event_id = $2 AND seat_code = $3 AND status = $4
@@ -50,9 +49,7 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
         RETURNING id, expires_at
       `, [finalUserId, seatId]);
 
-      await client.query('COMMIT'); // Xác nhận toàn bộ thay đổi
-      
-      // ✅ OPTIMIZED: Emit event asynchronously (non-blocking)
+      await client.query('COMMIT');
       setImmediate(() => {
         io.emit('seatStatusChanged', {
           eventId,
@@ -181,10 +178,202 @@ export const getUserBookings = async (req: Request, res: Response): Promise<void
       client.release();
     }
   } catch (error) {
-    console.error('🔴 Lỗi lấy danh sách vé:', error);
+    console.error(' Lỗi lấy danh sách vé:', error);
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ' },
+    });
+  }
+};
+
+/**
+ * POST /api/reservations/ai/auto-book
+ * AI tự động đặt vé theo yêu cầu người dùng
+ * Request: { eventId, userId, prompt }
+ * Ví dụ: "Hãy giúp tôi đặt 3 vé ghế tốt nhất cho sự kiện này"
+ */
+export const autoBookWithAI = async (req: Request, res: Response): Promise<void> => {
+  const { eventId, userId, prompt } = req.body;
+  const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
+
+  try {
+    if (!eventId || !userId || !prompt) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'MISSING_PARAMS', message: 'eventId, userId, và prompt là bắt buộc' }
+      });
+      return;
+    }
+
+    console.log(` AI Auto-Book: ${prompt} (eventId: ${eventId})`);
+
+    // Lấy danh sách ghế available
+    const seatsRes = await pool.query(
+      `SELECT id, seat_code, price, status FROM seats 
+       WHERE event_id = $1 AND status = 'AVAILABLE'
+       ORDER BY seat_code ASC
+       LIMIT 20`,
+      [eventId]
+    );
+
+    const availableSeats = seatsRes.rows;
+
+    if (availableSeats.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'NO_SEATS', message: 'Không còn ghế trống' }
+      });
+      return;
+    }
+
+    // Gọi Ollama AI để quyết định đặt bao nhiêu vé
+    const aiPrompt = `Dựa trên yêu cầu: "${prompt}"
+    Danh sách ghế available: ${availableSeats.map(s => s.seat_code).join(', ')}
+    
+    Hãy chọn một số ghế tốt nhất (ưu tiên ghế ở giữa như A5-A10, B5-B10). 
+    Trả lời chỉ danh sách mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,B5`;
+
+    const aiResponse = await axios.post(OLLAMA_URL, {
+      model: 'mistral',
+      messages: [{ role: 'user', content: aiPrompt }],
+      stream: false,
+      timeout: 30000
+    });
+
+    const selectedSeatsStr = aiResponse.data.message.content;
+    const selectedCodes = selectedSeatsStr.split(',').map((s: string) => s.trim().toUpperCase()).filter((s: string) => s.length > 0);
+
+    console.log(`🤖 AI đã chọn ghế: ${selectedCodes.join(', ')}`);
+    const seatsToBook = availableSeats.filter(seat => 
+      selectedCodes.includes(seat.seat_code)
+    ).slice(0, 5);
+
+    if (seatsToBook.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_SEATS', message: 'AI không chọn được ghế hợp lệ' }
+      });
+      return;
+    }
+
+    // Tự động hold + checkout các ghế
+    const bookedSeats = [];
+    const client = await pool.connect();
+
+    try {
+      for (const seat of seatsToBook) {
+        try {
+          await client.query('BEGIN');
+
+          // Lock seat in Redis
+          const lockKey = `lock:event:${eventId}:seat:${seat.seat_code}`;
+          const isLocked = await redisClient.set(lockKey, userId, { NX: true, EX: 300 });
+
+          if (!isLocked) {
+            continue; // Skip if someone else grabbed it
+          }
+
+          // Hold seat
+          const updateRes = await client.query(
+            `UPDATE seats SET status = $1 
+             WHERE event_id = $2 AND seat_code = $3 AND status = $4
+             RETURNING id`,
+            ['HOLD', eventId, seat.seat_code, 'AVAILABLE']
+          );
+
+          if (updateRes.rows.length === 0) {
+            await redisClient.del(lockKey);
+            await client.query('ROLLBACK');
+            continue;
+          }
+
+          const seatId = updateRes.rows[0].id;
+
+          // Create reservation
+          const reservationRes = await client.query(
+            `INSERT INTO reservations (user_id, seat_id, status, expires_at)
+             VALUES ($1, $2, 'PENDING', NOW() + INTERVAL '5 minutes')
+             RETURNING id, expires_at`,
+            [userId, seatId]
+          );
+
+          const reservationId = reservationRes.rows[0].id;
+
+          // Immediately checkout
+          const seatCheckRes = await client.query(
+            `SELECT seat_id FROM reservations 
+             WHERE id = $1 AND user_id = $2 AND status = 'PENDING' AND expires_at > NOW()`,
+            [reservationId, userId]
+          );
+
+          if (seatCheckRes.rows.length > 0) {
+            await Promise.all([
+              client.query(`UPDATE reservations SET status = 'PAID' WHERE id = $1`, [reservationId]),
+              client.query(`UPDATE seats SET status = 'SOLD' WHERE id = $1`, [seatId])
+            ]);
+
+            bookedSeats.push({
+              seatCode: seat.seat_code,
+              price: seat.price,
+              reservationId
+            });
+
+            // Emit event
+            setImmediate(async () => {
+              io.emit('seatStatusChanged', {
+                eventId,
+                seatCode: seat.seat_code,
+                status: 'SOLD'
+              });
+              await redisClient.del(lockKey);
+            });
+          }
+
+          await client.query('COMMIT');
+        } catch (seatError) {
+          await client.query('ROLLBACK');
+          console.error(` Lỗi đặt ghế ${seat.seat_code}:`, seatError);
+        }
+      }
+
+      if (bookedSeats.length > 0) {
+        const totalPrice = bookedSeats.reduce((sum, s) => sum + s.price, 0);
+        res.status(200).json({
+          success: true,
+          data: {
+            bookedSeats,
+            totalPrice,
+            aiMessage: `Đặt thành công ${bookedSeats.length} vé: ${bookedSeats.map(s => s.seatCode).join(', ')}`
+          },
+          message: ` Đặt thành công ${bookedSeats.length} vé`
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: { code: 'BOOKING_FAILED', message: 'Không thể đặt bất kỳ vé nào' }
+        });
+      }
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error(' Lỗi gọi Ollama:', error.message);
+      res.status(503).json({
+        success: false,
+        error: {
+          code: 'OLLAMA_ERROR',
+          message: 'Không thể kết nối tới Ollama. Vui lòng chắc chắn Ollama đang chạy'
+        }
+      });
+      return;
+    }
+
+    console.error(' Lỗi Auto-Book:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Lỗi máy chủ nội bộ khi auto-book' }
     });
   }
 };

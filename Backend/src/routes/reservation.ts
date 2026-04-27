@@ -1,12 +1,13 @@
 
 import { Router } from 'express';
-import { holdSeat, checkout, getUserBookings } from '../controllers/reservation.js';
+import { holdSeat, checkout, getUserBookings, autoBookWithAI } from '../controllers/reservation.js';
 import { authMiddleware } from '../utils/auth-middleware.js';
 
 const router = Router();
 
 router.post('/hold', holdSeat);
 router.post('/checkout', checkout);
+router.post('/ai/auto-book', autoBookWithAI);
 
 /**
  * GET /api/reservations/user/me
