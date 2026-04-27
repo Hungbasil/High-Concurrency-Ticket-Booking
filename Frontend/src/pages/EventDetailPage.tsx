@@ -264,8 +264,8 @@ export const EventDetailPage: React.FC = () => {
                 onClose={() => setIsAIAutoBookOpen(false)}
                 eventId={eventId || ''}
                 onSuccess={() => {
-                  // Refresh seats data
-                  setTimeout(() => window.location.reload(), 1000);
+                  // Ghế đã được thêm vào giỏ hàng bởi modal
+                  // Không cần reload trang
                 }}
               />
             </div>

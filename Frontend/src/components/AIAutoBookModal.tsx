@@ -21,8 +21,8 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [showResponse, setShowResponse] = useState(false);
-  const [bookedSeats, setBookedSeats] = useState<any[]>([]);
-  const { currentUser, showNotification } = useBookingStore();
+  const [heldSeats, setHeldSeats] = useState<any[]>([]);
+  const { currentUser, showNotification, addToCart } = useBookingStore();
 
   const autoBookMutation = useMutation({
     mutationFn: async (userPrompt: string) => {
@@ -38,19 +38,10 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
       return res.data;
     },
     onSuccess: (data) => {
-      setBookedSeats(data.data.bookedSeats || []);
+      setHeldSeats(data.data.heldSeats || []);
       setResponse(data.data.aiMessage);
       setShowResponse(true);
-      showNotification(data.message, 'success');
-      
-      setTimeout(() => {
-        onClose();
-        setPrompt('');
-        setResponse(null);
-        setShowResponse(false);
-        setBookedSeats([]);
-        onSuccess?.();
-      }, 3000);
+      showNotification('✅ AI đã chọn ghế thành công!', 'success');
     },
     onError: (error: any) => {
       const errorMsg =
@@ -75,12 +66,39 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
     }
   };
 
+  const handleAddToCart = () => {
+    if (heldSeats.length === 0) return;
+
+    // Thêm tất cả ghế vào giỏ hàng
+    heldSeats.forEach((seat) => {
+      addToCart({
+        seatId: seat.seatId,
+        seatCode: seat.seatCode,
+        price: seat.price,
+        eventId,
+        holdId: seat.reservationId,
+        expiresAt: seat.expiresAt
+      });
+    });
+
+    showNotification(`✅ Đã thêm ${heldSeats.length} vé vào giỏ hàng!`, 'success');
+    
+    setTimeout(() => {
+      onClose();
+      setPrompt('');
+      setResponse(null);
+      setShowResponse(false);
+      setHeldSeats([]);
+      onSuccess?.();
+    }, 1500);
+  };
+
   const handleClose = () => {
     if (!autoBookMutation.isPending) {
       setPrompt('');
       setResponse(null);
       setShowResponse(false);
-      setBookedSeats([]);
+      setHeldSeats([]);
       onClose();
     }
   };
@@ -88,7 +106,7 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
   const suggestedPrompts = [
     'Hãy chọn 2 vé ghế tốt nhất cho tôi',
     'Tôi muốn 3 vé ghế ở giữa sân',
-    'Giúp tôi đặt 1 vé ghế VIP nếu có'
+    'Giúp tôi chọn 1 vé ghế VIP nếu có'
   ];
 
   if (!currentUser) {
@@ -96,17 +114,17 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="🤖 AI Auto-Book" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="🤖 AI Chọn Ghế" size="lg">
       {!showResponse ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Mô tả yêu cầu đặt vé
+              Mô tả yêu cầu chọn ghế
             </label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Ví dụ: Hãy giúp tôi đặt 3 vé ghế tốt..."
+              placeholder="Ví dụ: Hãy giúp tôi chọn 3 vé ghế tốt..."
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               rows={4}
               disabled={autoBookMutation.isPending}
@@ -134,7 +152,7 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
 
           <div className="bg-blue-50 border border-blue-200 rounded p-3">
             <p className="text-sm text-blue-700">
-              ℹ️ AI sẽ tự động chọn ghế tốt nhất cho bạn và thanh toán ngay lập tức
+              ℹ️ AI sẽ chọn ghế tốt nhất. Bạn sẽ thêm vào giỏ hàng và thanh toán sau.
             </p>
           </div>
 
@@ -154,7 +172,7 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
               disabled={!prompt.trim() || autoBookMutation.isPending}
               className="flex-1"
             >
-              {autoBookMutation.isPending ? 'Đang xử lý...' : 'Đặt Vé AI'}
+              {autoBookMutation.isPending ? 'Đang chọn...' : 'Cho AI Chọn'}
             </Button>
           </div>
         </form>
@@ -166,34 +184,57 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
                 <div className="text-4xl mb-3">✅</div>
                 <p className="text-green-600 font-semibold mb-4">{response}</p>
                 
-                {bookedSeats.length > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded p-4 text-left">
-                    <p className="font-semibold text-green-700 mb-2">Vé đã đặt:</p>
-                    <div className="space-y-1">
-                      {bookedSeats.map((seat, idx) => (
+                {heldSeats.length > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded p-4 text-left mb-4">
+                    <p className="font-semibold text-green-700 mb-2">Ghế được chọn:</p>
+                    <div className="space-y-1 mb-3">
+                      {heldSeats.map((seat, idx) => (
                         <p key={idx} className="text-sm text-green-600">
-                          • Ghế {seat.seatCode}: {seat.price.toLocaleString()}đ
+                          • {seat.seatCode}: {seat.price.toLocaleString()}đ
                         </p>
                       ))}
                     </div>
-                    <p className="text-sm font-semibold text-green-700 mt-2">
-                      Tổng: {bookedSeats.reduce((sum, s) => sum + s.price, 0).toLocaleString()}đ
+                    <p className="text-sm font-semibold text-green-700 border-t pt-2">
+                      Tổng: {heldSeats.reduce((sum, s) => sum + s.price, 0).toLocaleString()}đ
+                    </p>
+                    <p className="text-xs text-green-600 mt-2">
+                      ⏱️ Các ghế sẽ giữ lại trong 5 phút
                     </p>
                   </div>
                 )}
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleClose}
+                    className="flex-1"
+                  >
+                    Hủy
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleAddToCart}
+                    className="flex-1"
+                  >
+                    ➕ Thêm vào Giỏ
+                  </Button>
+                </div>
               </>
             ) : (
               <>
                 <div className="text-4xl mb-2">❌</div>
                 <p className="text-red-600 font-semibold">{response}</p>
+                <Button
+                  type="button"
+                  onClick={handleClose}
+                  className="mt-4 w-full"
+                >
+                  Đóng
+                </Button>
               </>
             )}
           </div>
-          <p className="text-sm text-gray-600 mt-4">
-            {autoBookMutation.isSuccess
-              ? 'Đóng modal để tiếp tục...'
-              : 'Vui lòng thử lại'}
-          </p>
         </div>
       )}
     </Modal>
