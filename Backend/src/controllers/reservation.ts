@@ -211,22 +211,32 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
     const numberMatch = prompt.match(/\d+/);
     const maxSeats = numberMatch ? Math.min(parseInt(numberMatch[0]), 5) : 3; // Tối đa 5 vé
 
-    console.log(`📊 AI sẽ chọn tối đa ${maxSeats} vé`);
+    // Extract dãy ghế từ prompt (ví dụ: "dãy K", "row K", "hàng K", etc)
+    const rowMatch = prompt.match(/(?:dãy|hàng|row|row\s*)\s*([A-Z])/i);
+    const requestedRow = rowMatch ? rowMatch[1].toUpperCase() : null;
+
+    console.log(`📊 AI sẽ chọn tối đa ${maxSeats} vé${requestedRow ? ` từ dãy ${requestedRow}` : ''}`);
 
     // Lấy danh sách ghế available
-    const seatsRes = await pool.query(
-      `SELECT id, seat_code, price, status FROM seats 
-       WHERE event_id = $1 AND status = 'AVAILABLE'
-       ORDER BY seat_code ASC`,
-      [eventId]
-    );
+    let seatsQuery = `SELECT id, seat_code, price, status FROM seats 
+       WHERE event_id = $1 AND status = 'AVAILABLE'`;
+    const queryParams: any[] = [eventId];
+    
+    // Nếu yêu cầu dãy cụ thể, filter theo dãy
+    if (requestedRow) {
+      seatsQuery += ` AND seat_code LIKE $2`;
+      queryParams.push(`${requestedRow}%`);
+    }
+    
+    seatsQuery += ` ORDER BY seat_code ASC`;
 
+    const seatsRes = await pool.query(seatsQuery, queryParams);
     const availableSeats = seatsRes.rows;
 
     if (availableSeats.length === 0) {
       res.status(400).json({
         success: false,
-        error: { code: 'NO_SEATS', message: 'Không còn ghế trống' }
+        error: { code: 'NO_SEATS', message: requestedRow ? `Không còn ghế trống ở dãy ${requestedRow}` : 'Không còn ghế trống' }
       });
       return;
     }
@@ -235,25 +245,50 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
     const aiPrompt = `Dựa trên yêu cầu: "${prompt}"
     
     QUAN TRỌNG: Chỉ chọn ĐÚNG ${maxSeats} ghế, không được nhiều hơn!
+    ${requestedRow ? `Chỉ chọn ghế từ dãy ${requestedRow}!` : ''}
     
     Danh sách ghế available: ${availableSeats.map(s => s.seat_code).join(', ')}
     
-    Hãy chọn ${maxSeats} ghế tốt nhất (ưu tiên ghế ở giữa như A5-A10, B5-B10). 
-    Trả lời CHỈ danh sách ${maxSeats} mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,A7`;
+    Hãy chọn ${maxSeats} ghế tốt nhất (ưu tiên ghế ở giữa). 
+    Trả lời CHỈ danh sách ${maxSeats} mã ghế cách nhau bằng dấu phẩy, ví dụ: ${availableSeats.slice(0, Math.min(maxSeats, availableSeats.length)).map(s => s.seat_code).join(',')}`;
 
     const aiResponse = await axios.post(OLLAMA_URL, {
-      model: 'mistral',
+      model: 'neural-chat', // Dùng model nhẹ hơn thay vì mistral
       messages: [{ role: 'user', content: aiPrompt }],
       stream: false,
-      timeout: 30000
+      timeout: 15000 // Giảm timeout xuống 15s
+    }).catch(async (error) => {
+      // Fallback: Nếu AI quá chậm, chọn ghế đầu tiên available
+      console.warn('⚠️ Timeout, fallback to automatic selection');
+      return {
+        data: {
+          message: {
+            content: availableSeats
+              .slice(0, maxSeats)
+              .map(s => s.seat_code)
+              .join(',')
+          }
+        }
+      };
     });
 
     const selectedSeatsStr = aiResponse.data.message.content;
-    const selectedCodes = selectedSeatsStr
+    let selectedCodes = selectedSeatsStr
       .split(',')
       .map((s: string) => s.trim().toUpperCase())
-      .filter((s: string) => s.length > 0)
-      .slice(0, maxSeats); // Giới hạn chỉ maxSeats
+      .filter((s: string) => s.length > 0 && /^[A-Z]\d+$/.test(s)) // Validate format: Letter + Numbers
+      .slice(0, maxSeats);
+
+    // Nếu AI không chọn đủ ghế hợp lệ, fallback lấy từ available list
+    if (selectedCodes.length < maxSeats) {
+      console.warn(`⚠️ AI chỉ chọn ${selectedCodes.length} ghế, fallback lấy từ available`);
+      const validAvailableSeats = availableSeats.filter(s => 
+        /^[A-Z]\d+$/.test(s.seat_code)
+      );
+      selectedCodes = validAvailableSeats
+        .slice(0, maxSeats)
+        .map(s => s.seat_code);
+    }
 
     console.log(`✅ AI đã chọn ghế: ${selectedCodes.join(', ')}`);
 
