@@ -89,7 +89,7 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
     setResponse(null);
     setShowResponse(false);
     setHeldSeats([]);
-    navigate('/checkout');
+    navigate(`/checkout/${eventId}`);
   };
 
   const handleClose = () => {
