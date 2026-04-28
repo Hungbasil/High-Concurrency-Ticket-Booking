@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Button } from './Button.js';
 import { Modal } from './Modal.js';
 import { useBookingStore } from '../store/useBookingStore.js';
@@ -22,6 +23,7 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
   const [response, setResponse] = useState<string | null>(null);
   const [showResponse, setShowResponse] = useState(false);
   const [heldSeats, setHeldSeats] = useState<any[]>([]);
+  const navigate = useNavigate();
   const { currentUser, showNotification, addToCart } = useBookingStore();
 
   const autoBookMutation = useMutation({
@@ -41,7 +43,7 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
       setHeldSeats(data.data.heldSeats || []);
       setResponse(data.data.aiMessage);
       setShowResponse(true);
-      showNotification('✅ AI đã chọn ghế thành công!', 'success');
+      showNotification(' AI đã chọn ghế thành công!', 'success');
     },
     onError: (error: any) => {
       const errorMsg =
@@ -80,17 +82,14 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
         expiresAt: seat.expiresAt
       });
     });
-
-    showNotification(`✅ Đã thêm ${heldSeats.length} vé vào giỏ hàng!`, 'success');
     
-    setTimeout(() => {
-      onClose();
-      setPrompt('');
-      setResponse(null);
-      setShowResponse(false);
-      setHeldSeats([]);
-      onSuccess?.();
-    }, 1500);
+    // Đóng modal và chuyển đến trang thanh toán
+    onClose();
+    setPrompt('');
+    setResponse(null);
+    setShowResponse(false);
+    setHeldSeats([]);
+    navigate('/checkout');
   };
 
   const handleClose = () => {
@@ -210,14 +209,14 @@ export const AIAutoBookModal: React.FC<AIAutoBookModalProps> = ({
                     onClick={handleClose}
                     className="flex-1"
                   >
-                    Hủy
+                    Tiếp tục chọn
                   </Button>
                   <Button
                     type="button"
                     onClick={handleAddToCart}
                     className="flex-1"
                   >
-                    ➕ Thêm vào Giỏ
+                    Thanh Toán
                   </Button>
                 </div>
               </>
