@@ -6,20 +6,31 @@ import type { SeatUpdate } from '../types/index.js';
 type SeatUpdateListener = (update: SeatUpdate) => void;
 
 let globalSocket: Socket | null = null;
-const listeners: Set<SeatUpdateListener> = new Set();
+let connectionCount = 0; // Track how many hooks are using the connection
 
 /**
  * Initialize and manage WebSocket connection for real-time seat updates
  * Ensures only one connection is created and shared across the app
+ * Properly cleans up on component unmount
  */
 export const useSocket = () => {
   const socketRef = useRef<Socket | null>(globalSocket);
+  const listenersRef = useRef<Set<SeatUpdateListener>>(new Set());
 
   useEffect(() => {
+    connectionCount++;
+
     // If connection already exists, use it
-    if (globalSocket) {
+    if (globalSocket && globalSocket.connected) {
       socketRef.current = globalSocket;
-      return;
+      return () => {
+        connectionCount--;
+        // Only disconnect if no components are using it
+        if (connectionCount === 0 && globalSocket) {
+          globalSocket.disconnect();
+          globalSocket = null;
+        }
+      };
     }
 
     try {
@@ -42,8 +53,8 @@ export const useSocket = () => {
 
       socket.on('seatStatusChanged', (data: SeatUpdate) => {
         console.log('🔄 Seat status changed:', data);
-        // Notify all listeners
-        listeners.forEach((listener) => listener(data));
+        // Notify all listeners for this socket instance
+        listenersRef.current.forEach((listener) => listener(data));
       });
 
       socket.on('error', (error) => {
@@ -56,15 +67,21 @@ export const useSocket = () => {
       console.error('Failed to initialize WebSocket:', error);
     }
 
+    // Cleanup on unmount
     return () => {
-      // Don't disconnect on unmount - keep connection alive for app
+      connectionCount--;
+      // Only disconnect if no components are using it
+      if (connectionCount === 0 && globalSocket) {
+        globalSocket.disconnect();
+        globalSocket = null;
+      }
     };
   }, []);
 
   const subscribe = useCallback((listener: SeatUpdateListener) => {
-    listeners.add(listener);
+    listenersRef.current.add(listener);
     return () => {
-      listeners.delete(listener);
+      listenersRef.current.delete(listener);
     };
   }, []);
 
@@ -79,17 +96,16 @@ export const useSocket = () => {
  */
 export const useSeatUpdates = (eventId: string, onUpdate: SeatUpdateListener) => {
   const { subscribe } = useSocket();
+  const memoizedCallback = useCallback((update: SeatUpdate) => {
+    if (update.eventId === eventId) {
+      onUpdate(update);
+    }
+  }, [eventId, onUpdate]);
 
   useEffect(() => {
-    const unsubscribe = subscribe((update) => {
-      // Filter updates for this event
-      if (update.eventId === eventId) {
-        onUpdate(update);
-      }
-    });
-
+    const unsubscribe = subscribe(memoizedCallback);
     return unsubscribe;
-  }, [eventId, subscribe, onUpdate]);
+  }, [subscribe, memoizedCallback]);
 };
 
 /**
