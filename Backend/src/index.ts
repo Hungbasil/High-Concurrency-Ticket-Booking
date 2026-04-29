@@ -10,6 +10,7 @@ import eventsRoutes from './routes/events.js';
 import usersRoutes from './routes/users.js';
 import { errorHandler } from './utils/error-handler.js';
 import { generalLimiter } from './utils/rate-limiter.js';
+import { startCleanupJob } from './scripts/cleanup-expired-holds.js';
 
 dotenv.config();
 
@@ -73,6 +74,9 @@ const startServer = async () => {
     const client = await pool.connect();
     console.log('🟢 Đã kết nối thành công với PostgreSQL!');
     client.release();
+    
+    // Khởi động background cleanup job
+    startCleanupJob();
     
     httpServer.listen(port, () => {
       console.log(`🚀 Server đang lắng nghe tại http://localhost:${port}`);
