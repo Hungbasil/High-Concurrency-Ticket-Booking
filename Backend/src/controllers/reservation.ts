@@ -6,12 +6,19 @@ import { io } from '../index.js';
 import axios from 'axios';
 
 export const holdSeat = async (req: Request, res: Response): Promise<void> => {
-  const { userId, eventId, seatCode } = req.body;
+  const { eventId, seatCode } = req.body;
+  // Get userId from JWT token (in request), not from request body
+  const userId = (req as any).userId || null;
 
   try {
+    // Validate input
+    if (!eventId || !seatCode) {
+      res.status(400).json({ message: 'eventId và seatCode là bắt buộc' });
+      return;
+    }
 
     const lockKey = `lock:event:${eventId}:seat:${seatCode}`;
-    const isLocked = await redisClient.set(lockKey, userId, {
+    const isLocked = await redisClient.set(lockKey, userId || 'temp-user', {
       NX: true,
       EX: 300 
     });
@@ -40,17 +47,16 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
 
       const seatId = updateRes.rows[0].id;
 
-      // Convert temp-user to NULL for database, or use userId if it's a valid UUID
-      const finalUserId = userId === 'temp-user' || !userId || userId === 'null' ? null : userId;
-
       const reservationRes = await client.query(`
         INSERT INTO reservations (user_id, seat_id, status, expires_at)
         VALUES ($1, $2, 'PENDING', NOW() + INTERVAL '5 minutes')
         RETURNING id, expires_at
-      `, [finalUserId, seatId]);
+      `, [userId, seatId]);
 
       await client.query('COMMIT');
-      setImmediate(() => {
+      
+      // Emit socket event asynchronously without blocking response
+      setImmediate(async () => {
         io.emit('seatStatusChanged', {
           eventId,
           seatCode,
@@ -80,20 +86,25 @@ export const holdSeat = async (req: Request, res: Response): Promise<void> => {
 
 // Controller xử lý thanh toán sau khi giữ ghế thành công (giả lập)
 export const checkout = async (req: Request, res: Response): Promise<void> => {
-  const { userId, reservationId, eventId, seatCode } = req.body;
+  const { reservationId, eventId, seatCode } = req.body;
+  // Get userId from JWT token, not from request body
+  const userId = (req as any).userId || null;
+
+  // Validate input
+  if (!reservationId || !eventId || !seatCode) {
+    res.status(400).json({ message: 'reservationId, eventId và seatCode là bắt buộc' });
+    return;
+  }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Convert temp-user to NULL for database, or use userId if it's a valid UUID
-    const finalUserId = userId === 'temp-user' || !userId || userId === 'null' ? null : userId;
-
     // ✅ OPTIMIZED: Get seat_id and check reservation in one query
     const resCheck = await client.query(`
       SELECT seat_id FROM reservations 
       WHERE id = $1 AND (user_id = $2 OR (user_id IS NULL AND $2 IS NULL)) AND status = 'PENDING' AND expires_at > NOW()
-    `, [reservationId, finalUserId]);
+    `, [reservationId, userId]);
 
     if (resCheck.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -104,7 +115,7 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
     const seatId = resCheck.rows[0].seat_id;
     
     // ✅ OPTIMIZED: Execute both updates concurrently (in parallel within transaction)
-    await Promise.all([
+    const [updateRes1, updateRes2] = await Promise.all([
       client.query(`UPDATE reservations SET status = 'PAID' WHERE id = $1`, [reservationId]),
       client.query(`UPDATE seats SET status = 'SOLD' WHERE id = $1`, [seatId])
     ]);
@@ -113,13 +124,17 @@ export const checkout = async (req: Request, res: Response): Promise<void> => {
     
     // ✅ OPTIMIZED: Emit event and clear lock asynchronously (non-blocking)
     setImmediate(async () => {
-      io.emit('seatStatusChanged', {
-        eventId,
-        seatCode,
-        status: 'SOLD'
-      });
-      const lockKey = `lock:event:${eventId}:seat:${seatCode}`;
-      await redisClient.del(lockKey);
+      try {
+        io.emit('seatStatusChanged', {
+          eventId,
+          seatCode,
+          status: 'SOLD'
+        });
+        const lockKey = `lock:event:${eventId}:seat:${seatCode}`;
+        await redisClient.del(lockKey);
+      } catch (err) {
+        console.error('[Checkout] ❌ Lỗi phát sự kiện:', err);
+      }
     });
 
     res.status(200).json({ message: '✅ Thanh toán thành công!' });

@@ -1,15 +1,24 @@
 import type { Request, Response } from 'express';
 import pool from '../config/db.js';
 import { AppError } from '../utils/app-error.js';
-import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// Enforce JWT_SECRET from environment
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('❌ JWT_SECRET environment variable is required!');
+}
 const JWT_EXPIRE = '7d';
 
-// Hash password
-const hashPassword = (password: string): string => {
-  return crypto.createHash('sha256').update(password).digest('hex');
+// Hash password with bcrypt
+const hashPassword = async (password: string): Promise<string> => {
+  return bcrypt.hash(password, 12);
+};
+
+// Verify password with bcrypt
+const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+  return bcrypt.compare(password, hash);
 };
 
 // Generate JWT token
@@ -34,9 +43,17 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       );
     }
 
-    if (password.length < 6) {
+    // Password must be at least 8 characters and contain uppercase, number
+    if (password.length < 8) {
       throw new AppError(
-        'Mật khẩu phải có ít nhất 6 ký tự',
+        'Mật khẩu phải có ít nhất 8 ký tự',
+        400,
+        'WEAK_PASSWORD'
+      );
+    }
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      throw new AppError(
+        'Mật khẩu phải chứa ít nhất 1 chữ hoa và 1 chữ số',
         400,
         'WEAK_PASSWORD'
       );
@@ -55,7 +72,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
       if (existingUser.rows.length > 0) {
         await client.query('ROLLBACK');
-        throw new AppError(
+        throw new AppError(await 
           'Email này đã được đăng ký',
           409,
           'USER_EXISTS'
@@ -151,8 +168,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       const user = userRes.rows[0];
 
       // Verify password
-      const passwordHash = hashPassword(password);
-      if (user.password_hash !== passwordHash) {
+      const isPasswordValid = await verifyPassword(password, user.password_hash);
+      if (!isPasswordValid) {
         throw new AppError(
           'Email hoặc mật khẩu không chính xác',
           401,

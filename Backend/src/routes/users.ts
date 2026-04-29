@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { register, login, getCurrentUser } from '../controllers/user.js';
 import { authMiddleware } from '../utils/auth-middleware.js';
 import { validateRequest } from '../utils/validation.js';
+import { authLimiter } from '../utils/rate-limiter.js';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ const registerSchema = {
   password: {
     type: 'string' as const,
     required: true,
-    minLength: 6,
+    minLength: 8, // Updated from 6 to 8
     maxLength: 128
   },
   fullName: {
@@ -36,7 +37,7 @@ const loginSchema = {
   password: {
     type: 'string' as const,
     required: true,
-    minLength: 6
+    minLength: 8 // Updated from 6 to 8
   }
 };
 
@@ -46,7 +47,7 @@ const loginSchema = {
  * Body: { email, password, fullName }
  * Returns: { user, token }
  */
-router.post('/register', validateRequest(registerSchema), register);
+router.post('/register', authLimiter, validateRequest(registerSchema), register);
 
 /**
  * POST /api/users/login
@@ -54,7 +55,7 @@ router.post('/register', validateRequest(registerSchema), register);
  * Body: { email, password }
  * Returns: { user, token }
  */
-router.post('/login', validateRequest(loginSchema), login);
+router.post('/login', authLimiter, validateRequest(loginSchema), login);
 
 /**
  * GET /api/users/me

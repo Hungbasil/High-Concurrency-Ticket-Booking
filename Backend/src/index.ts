@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import helmet from 'helmet';
 import pool from './config/db.js';
 import { connectRedis } from './config/redis.js';
 import reservationRoutes from './routes/reservation.js';
@@ -28,6 +29,7 @@ export const io = new Server(httpServer, {
 
 const port = process.env.PORT || 3000;
 
+app.use(helmet()); // Add security headers
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
