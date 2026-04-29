@@ -30,10 +30,10 @@ export const cleanupExpiredHolds = async (): Promise<void> => {
       try {
         await client.query('BEGIN');
 
-        // Cập nhật reservation sang trạng thái EXPIRED
+        // Xóa reservation đã hết hạn
         await client.query(
-          'UPDATE reservations SET status = $1 WHERE id = $2',
-          ['EXPIRED', reservationId]
+          'DELETE FROM reservations WHERE id = $1',
+          [reservationId]
         );
 
         // Cập nhật seat trở lại AVAILABLE
