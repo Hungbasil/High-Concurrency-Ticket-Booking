@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { redisClient } from '../config/redis.js';
 import { CustomError } from './error-handler.js';
 

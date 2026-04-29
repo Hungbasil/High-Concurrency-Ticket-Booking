@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { CustomError } from './error-handler.js';
 
 export interface ValidationSchema {
