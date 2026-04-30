@@ -257,52 +257,62 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
     }
 
     // Gọi Ollama AI để chọn ghế (giới hạn số lượng)
-    const aiPrompt = `Dựa trên yêu cầu: "${prompt}"
-    
-    QUAN TRỌNG: Chỉ chọn ĐÚNG ${maxSeats} ghế, không được nhiều hơn!
-    ${requestedRow ? `Chỉ chọn ghế từ dãy ${requestedRow}!` : ''}
-    
-    Danh sách ghế available: ${availableSeats.map(s => s.seat_code).join(', ')}
-    
-    Hãy chọn ${maxSeats} ghế tốt nhất (ưu tiên ghế ở giữa). 
-    Trả lời CHỈ danh sách ${maxSeats} mã ghế cách nhau bằng dấu phẩy, ví dụ: ${availableSeats.slice(0, Math.min(maxSeats, availableSeats.length)).map(s => s.seat_code).join(',')}`;
+    const aiPrompt = `Chọn ${maxSeats} ghế tốt nhất từ danh sách này. Ưu tiên ghế ở giữa (số cao hơn tốt hơn).
+Danh sách: ${availableSeats.map(s => s.seat_code).join(', ')}
+Trả lời chỉ mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,A7`;
 
-    const aiResponse = await axios.post(OLLAMA_URL, {
-      model: 'neural-chat', // Dùng model nhẹ hơn thay vì mistral
-      messages: [{ role: 'user', content: aiPrompt }],
-      stream: false,
-      timeout: 15000 // Giảm timeout xuống 15s
-    }).catch(async (error) => {
-      // Fallback: Nếu AI quá chậm, chọn ghế đầu tiên available
-      console.warn('⚠️ Timeout, fallback to automatic selection');
-      return {
-        data: {
-          message: {
-            content: availableSeats
-              .slice(0, maxSeats)
-              .map(s => s.seat_code)
-              .join(',')
-          }
-        }
-      };
-    });
+    const smartFallback = (): string[] => {
+      // Chọn ghế thông minh: ưu tiên ghế ở giữa, liên tiếp
+      const sorted = availableSeats.sort((a, b) => {
+        // Tách chữ cái và số
+        const aMatch = a.seat_code.match(/^([A-Z])(\d+)$/);
+        const bMatch = b.seat_code.match(/^([A-Z])(\d+)$/);
+        if (!aMatch || !bMatch) return 0;
+        
+        const aNum = parseInt(aMatch[2]);
+        const bNum = parseInt(bMatch[2]);
+        
+        // Ưu tiên ghế ở giữa (số cao hơn - mặc định ghế 5-8 là giữa)
+        const aMid = Math.abs(aNum - 6.5);
+        const bMid = Math.abs(bNum - 6.5);
+        return aMid - bMid;
+      });
+      
+      return sorted.slice(0, maxSeats).map(s => s.seat_code);
+    };
 
-    const selectedSeatsStr = aiResponse.data.message.content;
-    let selectedCodes = selectedSeatsStr
-      .split(',')
-      .map((s: string) => s.trim().toUpperCase())
-      .filter((s: string) => s.length > 0 && /^[A-Z]\d+$/.test(s)) // Validate format: Letter + Numbers
-      .slice(0, maxSeats);
-
-    // Nếu AI không chọn đủ ghế hợp lệ, fallback lấy từ available list
-    if (selectedCodes.length < maxSeats) {
-      console.warn(`⚠️ AI chỉ chọn ${selectedCodes.length} ghế, fallback lấy từ available`);
-      const validAvailableSeats = availableSeats.filter(s => 
-        /^[A-Z]\d+$/.test(s.seat_code)
+    let selectedCodes: string[] = [];
+    try {
+      // Dùng Promise.race() với timeout explicit
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 10000)
       );
-      selectedCodes = validAvailableSeats
-        .slice(0, maxSeats)
-        .map(s => s.seat_code);
+      
+      const aiResponse = await Promise.race([
+        axios.post(OLLAMA_URL, {
+          model: 'neural-chat',
+          messages: [{ role: 'user', content: aiPrompt }],
+          stream: false,
+          timeout: 10000
+        }),
+        timeoutPromise
+      ]);
+
+      const selectedSeatsStr = aiResponse.data.message.content;
+      selectedCodes = selectedSeatsStr
+        .split(',')
+        .map((s: string) => s.trim().toUpperCase())
+        .filter((s: string) => s.length > 0 && /^[A-Z]\d+$/.test(s))
+        .slice(0, maxSeats);
+    } catch (error) {
+      console.warn('⚠️ Timeout, fallback to smart automatic selection');
+      selectedCodes = smartFallback();
+    }
+
+    // Nếu AI/fallback không chọn đủ ghế, dùng smartFallback
+    if (selectedCodes.length < maxSeats) {
+      console.warn(`⚠️ Chỉ chọn ${selectedCodes.length} ghế, dùng smart fallback`);
+      selectedCodes = smartFallback();
     }
 
     console.log(`✅ AI đã chọn ghế: ${selectedCodes.join(', ')}`);
