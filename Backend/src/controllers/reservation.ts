@@ -232,7 +232,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
 
     // Extract ghế cụ thể từ prompt (ví dụ: "F10", "F11", "F10 và F11", etc)
     const specificSeatsMatch = prompt.match(/([A-Z]\d+)/g);
-    const requestedSeats = specificSeatsMatch ? specificSeatsMatch.map(s => s.toUpperCase()) : [];
+    const requestedSeats = specificSeatsMatch ? specificSeatsMatch.map((s: string) => s.toUpperCase()) : [];
 
     console.log(`📊 AI sẽ chọn tối đa ${maxSeats} vé${requestedRow ? ` từ dãy ${requestedRow}` : ''}${requestedSeats.length > 0 ? ` (yêu cầu: ${requestedSeats.join(', ')})` : ''}`);
 
@@ -269,7 +269,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       if (requestedSeats.length > 0) {
         const availableRequested = availableSeats.filter(s => 
           requestedSeats.includes(s.seat_code)
-        ).map(s => s.seat_code);
+        ).map((s) => s.seat_code);
 
         if (availableRequested.length > 0) {
           console.log(`✅ Tìm thấy ghế được yêu cầu: ${availableRequested.join(', ')}`);
@@ -283,7 +283,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       const seatsByRow = new Map<string, any[]>();
       
       // Nhóm ghế theo dãy (A, B, C, ...)
-      availableSeats.forEach(seat => {
+      availableSeats.forEach((seat: any) => {
         const match = seat.seat_code.match(/^([A-Z])(\d+)$/);
         if (match) {
           const row = match[1];
@@ -331,16 +331,16 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
         return bestGroup.map(s => s.seat_code);
       }
 
-      // Fallback cuối: lấy ghế gần giữa nhất từ tất cả available
+        // Fallback cuối: lấy ghế gần giữa nhất từ tất cả available
       return availableSeats
-        .filter(s => /^[A-Z]\d+$/.test(s.seat_code))
-        .sort((a, b) => {
+        .filter((s: any) => /^[A-Z]\d+$/.test(s.seat_code))
+        .sort((a: any, b: any) => {
           const aNum = parseInt(a.seat_code.match(/\d+/)![0]);
           const bNum = parseInt(b.seat_code.match(/\d+/)![0]);
           return Math.abs(aNum - 6) - Math.abs(bNum - 6);
         })
         .slice(0, maxSeats)
-        .map(s => s.seat_code);
+        .map((s: any) => s.seat_code);
     };
 
     let selectedCodes: string[] = [];
@@ -359,7 +359,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
         console.log(`✅ Tất cả ghế được yêu cầu đều available: ${selectedCodes.join(', ')}`);
       } else {
         // Một số ghế không available
-        const notFound = requestedSeats.filter(s => !availableRequested.includes(s));
+        const notFound = requestedSeats.filter((s: string) => !availableRequested.includes(s));
         console.error(`❌ Ghế ${notFound.join(', ')} không available`);
         
         res.status(400).json({
@@ -372,21 +372,20 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
         return;
       }
     } else {
-      // Không yêu cầu cụ thể - gọi Ollama hoặc fallback
+      // gọi Ollama hoặc fallback
       try {
         console.log(`🤖 Gọi Ollama để chọn ${maxSeats} ghế...`);
-        
-        // Dùng endpoint /api/generate (đúng format) thay vì /api/chat
+      
         const ollamaGenerateUrl = OLLAMA_URL.replace('/api/chat', '/api/generate');
         console.log(`   URL: ${ollamaGenerateUrl}`);
         
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise<never>((_, reject) => 
           setTimeout(() => reject(new Error('Timeout 15s')), 15000)
         );
         
-        const aiResponse = await Promise.race([
+        const aiResponse = await Promise.race<any>([
           axios.post(ollamaGenerateUrl, {
-            model: 'mistral',  // Dùng mistral thay vì neural-chat
+            model: 'mistral', 
             prompt: aiPrompt,
             stream: false,
             timeout: 15000
@@ -409,7 +408,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
         
         console.log(`✅ AI chọn: ${selectedCodes.join(', ')}`);
       } catch (ollamaError) {
-        console.warn(`⚠️ Ollama error, fallback:`, ollamaError instanceof Error ? ollamaError.message : ollamaError);
+        console.warn(` Ollama error, fallback:`, ollamaError instanceof Error ? ollamaError.message : ollamaError);
         selectedCodes = smartFallback();
         console.log(`✅ Fallback chọn: ${selectedCodes.join(', ')}`);
       }
@@ -429,7 +428,7 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Chỉ HOLD ghế (không thanh toán)
+    // Chỉ HOLD không thanh toán
     const heldSeats = [];
     const client = await pool.connect();
 
