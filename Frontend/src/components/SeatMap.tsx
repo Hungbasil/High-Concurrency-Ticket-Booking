@@ -9,6 +9,7 @@ interface SeatMapProps {
   selectedSeats: string[];
   onSelectSeat: (seatCode: string, price: number, seatId: string) => Promise<void>;
   onDeselectSeat: (seatCode: string) => void;
+  onCountdownUpdate?: (countdowns: { [key: string]: number }) => void;
   isLoading?: boolean;
 }
 
@@ -23,6 +24,7 @@ export const SeatMap: React.FC<SeatMapProps> = ({
   selectedSeats,
   onSelectSeat,
   onDeselectSeat,
+  onCountdownUpdate,
   isLoading = false,
 }) => {
   const [localSeats, setLocalSeats] = useState<SeatType[]>(seats);
@@ -60,12 +62,14 @@ export const SeatMap: React.FC<SeatMapProps> = ({
             delete updated[key];
           }
         });
+        // Notify parent component of countdown updates
+        onCountdownUpdate?.(updated);
         return updated;
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [onCountdownUpdate]);
 
   // Organize seats by rows (A-Z)
   const seatsByRow = useMemo(() => {
@@ -178,7 +182,6 @@ export const SeatMap: React.FC<SeatMapProps> = ({
                     key={seat.id}
                     seat={seat}
                     isSelected={selectedSeats.includes(seat.seat_code)}
-                    countdown={holdCountdowns[seat.seat_code]}
                     onSelect={() => handleSelectSeat(seat)}
                     onDeselect={() => handleDeselectSeat(seat)}
                     disabled={isLoading || seat.status !== 'AVAILABLE'}

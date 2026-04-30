@@ -11,6 +11,7 @@ export const EventDetailPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
   const [isAIAutoBookOpen, setIsAIAutoBookOpen] = useState(false);
+  const [holdCountdowns, setHoldCountdowns] = useState<{ [key: string]: number }>({});
 
   // Call all hooks unconditionally at the top
   const { data: eventData, isLoading: eventLoading } = useEvent(eventId || null);
@@ -135,6 +136,7 @@ export const EventDetailPage: React.FC = () => {
                 selectedSeats={selectedSeats}
                 onSelectSeat={handleSelectSeat}
                 onDeselectSeat={handleDeselectSeat}
+                onCountdownUpdate={setHoldCountdowns}
                 isLoading={isHolding}
               />
             </div>
@@ -150,21 +152,33 @@ export const EventDetailPage: React.FC = () => {
                 <p className="text-sm text-gray-600 mb-2">Ghế đã chọn:</p>
                 {selectedSeats.length > 0 ? (
                   <div className="space-y-2 mb-4">
-                    {selectedSeats.map((seatCode) => (
-                      <div
-                        key={seatCode}
-                        className="flex items-center justify-between px-3 py-2 bg-blue-100 text-blue-800 text-sm font-semibold rounded"
-                      >
-                        <span>{seatCode}</span>
-                        <button
-                          onClick={() => handleDeselectSeat(seatCode)}
-                          className="ml-2 text-blue-600 hover:text-blue-900 font-bold text-lg"
-                          title="Bấm để bỏ chọn ghế này"
+                    {selectedSeats.map((seatCode) => {
+                      const countdown = holdCountdowns[seatCode];
+                      const minutes = countdown ? Math.floor(countdown / 60) : 0;
+                      const seconds = countdown ? countdown % 60 : 0;
+                      const countdownText = countdown ? `${minutes}:${seconds.toString().padStart(2, '0')}` : '';
+                      
+                      return (
+                        <div
+                          key={seatCode}
+                          className="flex items-center justify-between px-3 py-2 bg-blue-100 text-blue-800 text-sm font-semibold rounded"
                         >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-2">
+                            <span>{seatCode}</span>
+                            {countdownText && (
+                              <span className="text-xs text-red-600 font-bold">⏱️ {countdownText}</span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeselectSeat(seatCode)}
+                            className="ml-2 text-blue-600 hover:text-blue-900 font-bold text-lg"
+                            title="Bấm để bỏ chọn ghế này"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-gray-500 text-sm mb-4">Chưa chọn ghế nào</p>
