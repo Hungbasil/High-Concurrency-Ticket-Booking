@@ -230,7 +230,11 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
     const rowMatch = prompt.match(/(?:dãy|hàng|row|row\s*)\s*([A-Z])/i);
     const requestedRow = rowMatch ? rowMatch[1].toUpperCase() : null;
 
-    console.log(`📊 AI sẽ chọn tối đa ${maxSeats} vé${requestedRow ? ` từ dãy ${requestedRow}` : ''}`);
+    // Extract ghế cụ thể từ prompt (ví dụ: "F10", "F11", "F10 và F11", etc)
+    const specificSeatsMatch = prompt.match(/([A-Z]\d+)/g);
+    const requestedSeats = specificSeatsMatch ? specificSeatsMatch.map(s => s.toUpperCase()) : [];
+
+    console.log(`📊 AI sẽ chọn tối đa ${maxSeats} vé${requestedRow ? ` từ dãy ${requestedRow}` : ''}${requestedSeats.length > 0 ? ` (yêu cầu: ${requestedSeats.join(', ')})` : ''}`);
 
     // Lấy danh sách ghế available
     let seatsQuery = `SELECT id, seat_code, price, status FROM seats 
@@ -262,23 +266,82 @@ Danh sách: ${availableSeats.map(s => s.seat_code).join(', ')}
 Trả lời chỉ mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,A7`;
 
     const smartFallback = (): string[] => {
-      // Chọn ghế thông minh: ưu tiên ghế ở giữa, liên tiếp
-      const sorted = availableSeats.sort((a, b) => {
-        // Tách chữ cái và số
-        const aMatch = a.seat_code.match(/^([A-Z])(\d+)$/);
-        const bMatch = b.seat_code.match(/^([A-Z])(\d+)$/);
-        if (!aMatch || !bMatch) return 0;
-        
-        const aNum = parseInt(aMatch[2]);
-        const bNum = parseInt(bMatch[2]);
-        
-        // Ưu tiên ghế ở giữa (số cao hơn - mặc định ghế 5-8 là giữa)
-        const aMid = Math.abs(aNum - 6.5);
-        const bMid = Math.abs(bNum - 6.5);
-        return aMid - bMid;
-      });
+      // Nếu người dùng yêu cầu ghế cụ thể, kiểm tra xem ghế đó có available không
+      if (requestedSeats.length > 0) {
+        const availableRequested = availableSeats.filter(s => 
+          requestedSeats.includes(s.seat_code)
+        ).map(s => s.seat_code);
+
+        if (availableRequested.length > 0) {
+          console.log(`✅ Tìm thấy ghế được yêu cầu: ${availableRequested.join(', ')}`);
+          return availableRequested.slice(0, maxSeats);
+        } else {
+          console.warn(`⚠️ Ghế được yêu cầu (${requestedSeats.join(', ')}) không available, dùng smart selection`);
+        }
+      }
+
+      // Chọn nhóm ghế liên tiếp tốt nhất ở giữa sân
+      const seatsByRow = new Map<string, any[]>();
       
-      return sorted.slice(0, maxSeats).map(s => s.seat_code);
+      // Nhóm ghế theo dãy (A, B, C, ...)
+      availableSeats.forEach(seat => {
+        const match = seat.seat_code.match(/^([A-Z])(\d+)$/);
+        if (match) {
+          const row = match[1];
+          const num = parseInt(match[2]);
+          if (!seatsByRow.has(row)) seatsByRow.set(row, []);
+          seatsByRow.get(row)!.push({ ...seat, num });
+        }
+      });
+
+      let bestGroup: any[] = [];
+      let bestScore = -Infinity;
+
+      // Tìm nhóm ghế liên tiếp tốt nhất
+      seatsByRow.forEach((seatsInRow) => {
+        seatsInRow.sort((a, b) => a.num - b.num);
+
+        // Tìm tất cả các nhóm liên tiếp có ít nhất maxSeats ghế
+        for (let i = 0; i <= seatsInRow.length - maxSeats; i++) {
+          const group = seatsInRow.slice(i, i + maxSeats);
+          
+          // Kiểm tra liên tiếp
+          let isConsecutive = true;
+          for (let j = 1; j < group.length; j++) {
+            if (group[j].num !== group[j - 1].num + 1) {
+              isConsecutive = false;
+              break;
+            }
+          }
+
+          if (isConsecutive) {
+            // Score = ưu tiên ghế ở giữa (số gần 6 tốt hơn)
+            const avgNum = group.reduce((sum, s) => sum + s.num, 0) / group.length;
+            const score = -Math.abs(avgNum - 6); // Âm để sort từ cao xuống thấp
+            
+            if (score > bestScore) {
+              bestScore = score;
+              bestGroup = group;
+            }
+          }
+        }
+      });
+
+      // Nếu tìm được nhóm liên tiếp, dùng nó; không thì lấy ghế đầu tiên
+      if (bestGroup.length > 0) {
+        return bestGroup.map(s => s.seat_code);
+      }
+
+      // Fallback cuối: lấy ghế gần giữa nhất từ tất cả available
+      return availableSeats
+        .filter(s => /^[A-Z]\d+$/.test(s.seat_code))
+        .sort((a, b) => {
+          const aNum = parseInt(a.seat_code.match(/\d+/)![0]);
+          const bNum = parseInt(b.seat_code.match(/\d+/)![0]);
+          return Math.abs(aNum - 6) - Math.abs(bNum - 6);
+        })
+        .slice(0, maxSeats)
+        .map(s => s.seat_code);
     };
 
     let selectedCodes: string[] = [];
