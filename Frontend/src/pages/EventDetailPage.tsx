@@ -1,0 +1,293 @@
+import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useEvent, useEventSeats, useSeatSelection } from '../hooks/index.js';
+import { useBookingStore } from '../store/useBookingStore.js';
+import { SeatMap, Button, AIAutoBookModal } from '../components/index.js';
+
+/**
+ * Event Detail Page - Seat Selection
+ */
+export const EventDetailPage: React.FC = () => {
+  const { eventId } = useParams<{ eventId: string }>();
+  const navigate = useNavigate();
+  const [isAIAutoBookOpen, setIsAIAutoBookOpen] = useState(false);
+  const [holdCountdowns, setHoldCountdowns] = useState<{ [key: string]: number }>({});
+
+  // Call all hooks unconditionally at the top
+  const { data: eventData, isLoading: eventLoading } = useEvent(eventId || null);
+  const { data: seatsData, isLoading: seatsLoading } = useEventSeats(eventId || null);
+  const { handleSelectSeat, handleDeselectSeat, selectedSeats, isHolding } =
+    useSeatSelection(eventId || '');
+  const { addToCart, selections } = useBookingStore();
+
+  if (!eventId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 text-lg">Sự kiện không hợp lệ</p>
+        </div>
+      </div>
+    );
+  }
+
+  const event = eventData?.data;
+  const seats = seatsData?.data || [];
+
+  if (eventLoading || seatsLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin">
+          <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 text-lg">Không tìm thấy sự kiện</p>
+          <Button onClick={() => navigate('/')} className="mt-4">
+            Quay lại
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const eventDate = new Date(event.start_time);
+  const dateStr = eventDate.toLocaleDateString('vi-VN');
+  const timeStr = eventDate.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const handleCheckout = () => {
+    if (selectedSeats.length === 0) {
+      alert('Vui lòng chọn ít nhất một ghế');
+      return;
+    }
+
+    // Add selected seats to cart with holdId
+    const selection = selections[eventId];
+    const addedSeats: string[] = [];
+    
+    selectedSeats.forEach((seatCode) => {
+      const seat = seats.find((s) => s.seat_code === seatCode);
+      if (seat) {
+        console.log(`Adding seat ${seatCode} to cart with price:`, seat.price);
+        // Include holdId if available, but still add to cart for offline support
+        const holdInfo = selection?.tempHolds[seatCode];
+        addToCart({
+          seatId: seat.id,
+          seatCode: seat.seat_code,
+          price: seat.price,
+          eventId,
+          holdId: holdInfo?.holdId,
+          expiresAt: holdInfo?.expiresAt,
+        });
+        addedSeats.push(seatCode);
+      }
+    });
+
+    if (addedSeats.length > 0) {
+      console.log('Navigating to checkout with', addedSeats.length, 'seats');
+      // Navigate to checkout
+      navigate(`/checkout/${eventId}`);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate('/')}
+          className="text-blue-600 hover:text-blue-800 mb-6 font-semibold"
+        >
+          ← Quay lại
+        </button>
+
+        {/* Event Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-8 border border-gray-200">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{event.title}</h1>
+          <div className="flex gap-6 text-gray-600">
+            <div>
+              <p className="text-sm text-gray-500">Ngày</p>
+              <p className="font-semibold">{dateStr}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Thời gian</p>
+              <p className="font-semibold">{timeStr}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Seat Map */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Chọn ghế</h2>
+              <p className="text-sm text-gray-600 mb-4">💡 Bấm vào ghế để chọn, bấm lại để bỏ chọn</p>
+              <SeatMap
+                eventId={eventId}
+                seats={seats}
+                selectedSeats={selectedSeats}
+                onSelectSeat={handleSelectSeat}
+                onDeselectSeat={handleDeselectSeat}
+                onCountdownUpdate={setHoldCountdowns}
+                isLoading={isHolding}
+              />
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200 sticky top-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Tóm tắt</h3>
+
+              {/* Selected Seats */}
+              <div className="mb-6">
+                <p className="text-sm text-gray-600 mb-2">Ghế đã chọn:</p>
+                {selectedSeats.length > 0 ? (
+                  <div className="space-y-2 mb-4">
+                    {selectedSeats.map((seatCode) => {
+                      const countdown = holdCountdowns[seatCode];
+                      const minutes = countdown ? Math.floor(countdown / 60) : 0;
+                      const seconds = countdown ? countdown % 60 : 0;
+                      const countdownText = countdown ? `${minutes}:${seconds.toString().padStart(2, '0')}` : '';
+                      
+                      return (
+                        <div
+                          key={seatCode}
+                          className="flex items-center justify-between px-3 py-2 bg-blue-100 text-blue-800 text-sm font-semibold rounded"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{seatCode}</span>
+                            {countdownText && (
+                              <span className="text-xs text-red-600 font-bold">⏱️ {countdownText}</span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeselectSeat(seatCode)}
+                            className="ml-2 text-blue-600 hover:text-blue-900 font-bold text-lg"
+                            title="Bấm để bỏ chọn ghế này"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm mb-4">Chưa chọn ghế nào</p>
+                )}
+              </div>
+
+              {/* Pricing */}
+              <div className="space-y-3 border-t pt-4 mb-6">
+                {selectedSeats.length > 0 && (
+                  <>
+                    {selectedSeats.map((seatCode) => {
+                      const seat = seats.find((s) => s.seat_code === seatCode);
+                      return (
+                        <div key={seatCode} className="flex justify-between text-sm">
+                          <span className="text-gray-600">Ghế {seatCode}:</span>
+                          <span className="font-semibold">
+                            {seat?.price?.toLocaleString()}đ
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="border-t pt-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Tổng cộng:</span>
+                        <span className="font-semibold">
+                          {selectedSeats
+                            .reduce((sum, seatCode) => {
+                              const seat = seats.find((s) => s.seat_code === seatCode);
+                              return sum + (seat?.price || 0);
+                            }, 0)
+                            .toLocaleString()}đ
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Thuế (10%):</span>
+                        <span className="font-semibold">
+                          {(
+                            selectedSeats.reduce((sum, seatCode) => {
+                              const seat = seats.find((s) => s.seat_code === seatCode);
+                              return sum + (seat?.price || 0);
+                            }, 0) * 0.1
+                          ).toLocaleString()}đ
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Phí xử lý:</span>
+                        <span className="font-semibold">
+                          {(selectedSeats.length * 5000).toLocaleString()}đ
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-lg font-bold border-t pt-3">
+                        <span>Tổng cộng:</span>
+                        <span className="text-blue-600">
+                          {(
+                            selectedSeats.reduce((sum, seatCode) => {
+                              const seat = seats.find((s) => s.seat_code === seatCode);
+                              return sum + (seat?.price || 0);
+                            }, 0) *
+                              1.1 +
+                            selectedSeats.length * 5000
+                          ).toLocaleString()}đ
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Checkout Button */}
+              <Button
+                onClick={handleCheckout}
+                disabled={selectedSeats.length === 0}
+                size="lg"
+                className="w-full"
+              >
+                Tiến hành thanh toán
+              </Button>
+
+              {/* AI Auto-Book Button */}
+              <Button
+                onClick={() => setIsAIAutoBookOpen(true)}
+                variant="secondary"
+                size="lg"
+                className="w-full mt-3"
+              >
+                 Để AI Chọn & Đặt
+              </Button>
+
+              {/* Info */}
+              <p className="text-xs text-gray-500 mt-4">
+                ℹ️ Bạn sẽ hoàn thành thanh toán trong bước tiếp theo
+              </p>
+
+              {/* AI Auto-Book Modal */}
+              <AIAutoBookModal
+                isOpen={isAIAutoBookOpen}
+                onClose={() => setIsAIAutoBookOpen(false)}
+                eventId={eventId || ''}
+                onSuccess={() => {
+                  // Ghế đã được thêm vào giỏ hàng bởi modal
+                  // Không cần reload trang
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default EventDetailPage;

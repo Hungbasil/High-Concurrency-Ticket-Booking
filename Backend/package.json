@@ -6,17 +6,25 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "optimize-db": "tsx src/scripts/optimize-db.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@types/bcrypt": "^6.0.0",
     "axios": "^1.15.1",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
+    "csrf-csrf": "^4.0.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.4.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.20.0",
     "redis": "^5.12.1",
     "socket.io": "^4.8.3",
@@ -25,6 +33,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.20.0",
     "@types/socket.io": "^3.0.1",
