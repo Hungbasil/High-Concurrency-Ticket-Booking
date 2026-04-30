@@ -261,9 +261,8 @@ export const autoBookWithAI = async (req: Request, res: Response): Promise<void>
     }
 
     // Gọi Ollama AI để chọn ghế (giới hạn số lượng)
-    const aiPrompt = `Chọn ${maxSeats} ghế tốt nhất từ danh sách này. Ưu tiên ghế ở giữa (số cao hơn tốt hơn).
-Danh sách: ${availableSeats.map(s => s.seat_code).join(', ')}
-Trả lời chỉ mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,A7`;
+    const aiPrompt = `Chọn ${maxSeats} ghế từ: ${availableSeats.map(s => s.seat_code).join(',')}. Trả lời: A1,A2,A3`;
+
 
     const smartFallback = (): string[] => {
       // Nếu người dùng yêu cầu ghế cụ thể, kiểm tra xem ghế đó có available không
@@ -345,37 +344,75 @@ Trả lời chỉ mã ghế cách nhau bằng dấu phẩy, ví dụ: A5,A6,A7`;
     };
 
     let selectedCodes: string[] = [];
-    try {
-      // Dùng Promise.race() với timeout explicit
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 10000)
-      );
+    
+    // Nếu người dùng yêu cầu ghế cụ thể, kiểm tra xem ghế đó có available không
+    if (requestedSeats.length > 0) {
+      console.log(`📍 Kiểm tra ghế được yêu cầu: ${requestedSeats.join(', ')}`);
       
-      const aiResponse = await Promise.race([
-        axios.post(OLLAMA_URL, {
-          model: 'neural-chat',
-          messages: [{ role: 'user', content: aiPrompt }],
-          stream: false,
-          timeout: 10000
-        }),
-        timeoutPromise
-      ]);
+      const availableRequested = availableSeats.filter(s => 
+        requestedSeats.includes(s.seat_code)
+      ).map(s => s.seat_code);
 
-      const selectedSeatsStr = aiResponse.data.message.content;
-      selectedCodes = selectedSeatsStr
-        .split(',')
-        .map((s: string) => s.trim().toUpperCase())
-        .filter((s: string) => s.length > 0 && /^[A-Z]\d+$/.test(s))
-        .slice(0, maxSeats);
-    } catch (error) {
-      console.warn('⚠️ Timeout, fallback to smart automatic selection');
-      selectedCodes = smartFallback();
-    }
+      if (availableRequested.length === requestedSeats.length) {
+        // Tất cả ghế được yêu cầu đều available
+        selectedCodes = availableRequested;
+        console.log(`✅ Tất cả ghế được yêu cầu đều available: ${selectedCodes.join(', ')}`);
+      } else {
+        // Một số ghế không available
+        const notFound = requestedSeats.filter(s => !availableRequested.includes(s));
+        console.error(`❌ Ghế ${notFound.join(', ')} không available`);
+        
+        res.status(400).json({
+          success: false,
+          error: { 
+            code: 'SEATS_NOT_AVAILABLE', 
+            message: `Ghế ${notFound.join(', ')} không còn. Vui lòng chọn ghế khác.`
+          }
+        });
+        return;
+      }
+    } else {
+      // Không yêu cầu cụ thể - gọi Ollama hoặc fallback
+      try {
+        console.log(`🤖 Gọi Ollama để chọn ${maxSeats} ghế...`);
+        
+        // Dùng endpoint /api/generate (đúng format) thay vì /api/chat
+        const ollamaGenerateUrl = OLLAMA_URL.replace('/api/chat', '/api/generate');
+        console.log(`   URL: ${ollamaGenerateUrl}`);
+        
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout 15s')), 15000)
+        );
+        
+        const aiResponse = await Promise.race([
+          axios.post(ollamaGenerateUrl, {
+            model: 'mistral',  // Dùng mistral thay vì neural-chat
+            prompt: aiPrompt,
+            stream: false,
+            timeout: 15000
+          }),
+          timeoutPromise
+        ]);
 
-    // Nếu AI/fallback không chọn đủ ghế, dùng smartFallback
-    if (selectedCodes.length < maxSeats) {
-      console.warn(`⚠️ Chỉ chọn ${selectedCodes.length} ghế, dùng smart fallback`);
-      selectedCodes = smartFallback();
+        const responseText = aiResponse.data.response || aiResponse.data.result || '';
+        console.log(`✅ Ollama response: "${responseText}"`);
+
+        selectedCodes = responseText
+          .split(/[,\s]+/)
+          .map((s: string) => s.trim().toUpperCase())
+          .filter((s: string) => /^[A-Z]\d+$/.test(s))
+          .slice(0, maxSeats);
+          
+        if (selectedCodes.length === 0) {
+          throw new Error('AI không trích xuất được mã ghế');
+        }
+        
+        console.log(`✅ AI chọn: ${selectedCodes.join(', ')}`);
+      } catch (ollamaError) {
+        console.warn(`⚠️ Ollama error, fallback:`, ollamaError instanceof Error ? ollamaError.message : ollamaError);
+        selectedCodes = smartFallback();
+        console.log(`✅ Fallback chọn: ${selectedCodes.join(', ')}`);
+      }
     }
 
     console.log(`✅ AI đã chọn ghế: ${selectedCodes.join(', ')}`);
